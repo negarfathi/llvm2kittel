@@ -250,7 +250,11 @@ std::list<ref<Rule> > Converter::getCondensedRules()
 std::string Converter::getVar(llvm::Value *V)
 {
     std::string name = V->getName();
-    name = "v" + name;
+    if (!name.empty() && name[0] == '\'') {
+        name = name.substr(1);
+    } else {
+        name = "v" + name;
+    }
     std::ostringstream tmp;
     tmp << name;
     std::string res = tmp.str();
@@ -1930,6 +1934,12 @@ void Converter::visitLoadInst(llvm::LoadInst &I)
 void Converter::visitStoreInst(llvm::StoreInst &I)
 {
     if (m_phase1) {
+    } else if (m_t2Output && I.isSimple()) {
+        llvm::Value *val = I.getValueOperand();
+        llvm::Value *ptr = I.getPointerOperand();
+        ref<Polynomial> p = getPolynomial(val);
+        std::cout << (getVar(ptr)) << " := "
+                  << p->toString() << ";" << std::endl;
     } else {
         llvm::Value *val = I.getOperand(0);
         MayMustMap::iterator it = m_mmMap.find(&I);
