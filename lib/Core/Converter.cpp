@@ -1911,7 +1911,8 @@ void Converter::visitLoadInst(llvm::LoadInst &I)
         std::set<llvm::GlobalVariable*> mays = mmp.first;
         std::set<llvm::GlobalVariable*> musts = mmp.second;
         ref<Polynomial> newArg;
-        if (musts.size() == 1 && mays.size() == 0) {
+        if (musts.size() == 1 && mays.size() == 0 &&
+            (m_t2Output && I.isSimple())) {
             // unique!
             newArg = Polynomial::create(getVar(*musts.begin()));
         } else {
@@ -1925,7 +1926,9 @@ void Converter::visitLoadInst(llvm::LoadInst &I)
         ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
         if (m_t2Output) {
             //std::cout << (nondef->toString()) << ":= nondet();" << std::endl;
-            std::cout << (getVar(&I)) << " := nondet();" << std::endl;
+            //std::cout << (getVar(&I)) << " := nondet();" << std::endl;
+            std::cout << (getVar(&I)) << " := "
+                      << newArg->toString() << std::endl;
         }
         m_blockRules.push_back(rule);
     }
