@@ -14,20 +14,20 @@
 // llvm includes
 #include "WARN_OFF.h"
 #if LLVM_VERSION < VERSION(3, 3)
-  #include <llvm/Constants.h>
+#include <llvm/Constants.h>
 #else
-  #include <llvm/IR/Constants.h>
+#include <llvm/IR/Constants.h>
 #endif
 #include <llvm/ADT/SmallVector.h>
 #if LLVM_VERSION < VERSION(3, 5)
-  #include <llvm/Support/CallSite.h>
+#include <llvm/Support/CallSite.h>
 #else
-  #include <llvm/IR/CallSite.h>
+#include <llvm/IR/CallSite.h>
 #endif
 #if LLVM_VERSION < VERSION(3, 4)
-  #include <llvm/Transforms/Utils/BasicBlockUtils.h>
+#include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #else
-  #include <llvm/Analysis/CFG.h>
+#include <llvm/Analysis/CFG.h>
 #endif
 #include "WARN_ON.h"
 
@@ -41,64 +41,74 @@
 #define SMALL_VECTOR_SIZE 8
 
 Converter::Converter(const llvm::Type *boolType, bool assumeIsControl, bool selectIsControl, bool onlyMultiPredIsControl, bool boundedIntegers, bool unsignedEncoding, bool onlyLoopConditions, DivRemConstraintType divisionConstraintType, bool bitwiseConditions, bool complexityTuples, const bool t2Output)
-  : m_entryBlock(NULL),
-    m_boolType(boolType),
-    m_blockRules(),
-    m_rules(),
-    m_vars(),
-    m_lhs(),
-    m_counter(0),
-    m_phase1(true),
-    m_globals(),
-    m_mmMap(),
-    m_funcMayZap(),
-    m_tfMap(),
-    m_elcMap(),
-    m_returns(),
-    m_idMap(),
-    m_phiMap(),
-    m_nondef(0),
-    m_assumeIsControl(assumeIsControl),
-    m_selectIsControl(selectIsControl),
-    m_onlyMultiPredIsControl(onlyMultiPredIsControl),
-    m_controlPoints(),
-    m_trivial(false),
-    m_function(NULL),
-    m_scc(),
-    m_phiVars(),
-    m_boundedIntegers(boundedIntegers),
-    m_unsignedEncoding(unsignedEncoding),
-    m_bitwidthMap(),
-    m_onlyLoopConditions(onlyLoopConditions),
-    m_loopConditionBlocks(),
-    m_divisionConstraintType(divisionConstraintType),
-    m_bitwiseConditions(bitwiseConditions),
-    m_complexityTuples(complexityTuples),
-    m_complexityLHSs(),
-    m_t2Output(t2Output)
-{}
+    : m_entryBlock(NULL),
+      m_boolType(boolType),
+      m_blockRules(),
+      m_rules(),
+      m_vars(),
+      m_lhs(),
+      m_counter(0),
+      m_phase1(true),
+      m_globals(),
+      m_mmMap(),
+      m_funcMayZap(),
+      m_tfMap(),
+      m_elcMap(),
+      m_returns(),
+      m_idMap(),
+      m_phiMap(),
+      m_nondef(0),
+      m_assumeIsControl(assumeIsControl),
+      m_selectIsControl(selectIsControl),
+      m_onlyMultiPredIsControl(onlyMultiPredIsControl),
+      m_controlPoints(),
+      m_trivial(false),
+      m_function(NULL),
+      m_scc(),
+      m_phiVars(),
+      m_boundedIntegers(boundedIntegers),
+      m_unsignedEncoding(unsignedEncoding),
+      m_bitwidthMap(),
+      m_onlyLoopConditions(onlyLoopConditions),
+      m_loopConditionBlocks(),
+      m_divisionConstraintType(divisionConstraintType),
+      m_bitwiseConditions(bitwiseConditions),
+      m_complexityTuples(complexityTuples),
+      m_complexityLHSs(),
+      m_t2Output(t2Output)
+{
+}
 
 bool Converter::isTrivial(void)
 {
-    llvm::SmallVector<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>, SMALL_VECTOR_SIZE> res;
+    llvm::SmallVector<std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *>, SMALL_VECTOR_SIZE> res;
     llvm::FindFunctionBackedges(*m_function, res);
 
-    if (res.empty()) {
+    if (res.empty())
+    {
         // no backedge
-        for (llvm::Function::iterator bb = m_function->begin(), end = m_function->end(); bb != end; ++bb) {
-            for (llvm::BasicBlock::iterator i = bb->begin(), e = bb->end(); i != e; ++i) {
-                if (llvm::isa<llvm::CallInst>(i)) {
+        for (llvm::Function::iterator bb = m_function->begin(), end = m_function->end(); bb != end; ++bb)
+        {
+            for (llvm::BasicBlock::iterator i = bb->begin(), e = bb->end(); i != e; ++i)
+            {
+                if (llvm::isa<llvm::CallInst>(i))
+                {
                     llvm::CallInst *ci = llvm::cast<llvm::CallInst>(i);
                     llvm::Function *calledFunction = ci->getCalledFunction();
-                    std::list<llvm::Function*> callees;
-                    if (calledFunction != NULL) {
+                    std::list<llvm::Function *> callees;
+                    if (calledFunction != NULL)
+                    {
                         callees.push_back(calledFunction);
-                    } else {
+                    }
+                    else
+                    {
                         callees = getMatchingFunctions(*ci);
                     }
-                    for (std::list<llvm::Function*>::iterator cf = callees.begin(), cfe = callees.end(); cf != cfe; ++cf) {
+                    for (std::list<llvm::Function *>::iterator cf = callees.begin(), cfe = callees.end(); cf != cfe; ++cf)
+                    {
                         llvm::Function *callee = *cf;
-                        if (m_scc.find(callee) != m_scc.end()) {
+                        if (m_scc.find(callee) != m_scc.end())
+                        {
                             // call within SCC
                             return false;
                         }
@@ -107,13 +117,15 @@ bool Converter::isTrivial(void)
             }
         }
         return true;
-    } else {
+    }
+    else
+    {
         // backedge
         return false;
     }
 }
 
-void Converter::phase1(llvm::Function *function, std::set<llvm::Function*> &scc, MayMustMap &mmMap, std::map<llvm::Function*, std::set<llvm::GlobalVariable*> > &funcMayZap, TrueFalseMap &tfMap, std::set<llvm::BasicBlock*> &lcbs, ConditionMap &elcMap)
+void Converter::phase1(llvm::Function *function, std::set<llvm::Function *> &scc, MayMustMap &mmMap, std::map<llvm::Function *, std::set<llvm::GlobalVariable *>> &funcMayZap, TrueFalseMap &tfMap, std::set<llvm::BasicBlock *> &lcbs, ConditionMap &elcMap)
 {
     m_function = function;
     m_scc = scc;
@@ -138,38 +150,45 @@ void Converter::phase1(llvm::Function *function, std::set<llvm::Function*> &scc,
     m_nondef = 0;
     m_entryBlock = &function->getEntryBlock();
     m_trivial = isTrivial();
-    
-    for (llvm::Function::arg_iterator i = function->arg_begin(), e = function->arg_end(); i != e; ++i) {
-        if (i->getType()->isIntegerTy() && i->getType() != m_boolType) {
+
+    for (llvm::Function::arg_iterator i = function->arg_begin(), e = function->arg_end(); i != e; ++i)
+    {
+        if (i->getType()->isIntegerTy() && i->getType() != m_boolType)
+        {
             m_vars.push_back(getVar(i));
         }
     }
     llvm::Module *module = function->getParent();
-    for (llvm::Module::global_iterator global = module->global_begin(), globale = module->global_end(); global != globale; ++global) {
+    for (llvm::Module::global_iterator global = module->global_begin(), globale = module->global_end(); global != globale; ++global)
+    {
         const llvm::Type *globalType = llvm::cast<llvm::PointerType>(global->getType())->getContainedType(0);
-        if (globalType->isIntegerTy() && globalType != m_boolType) {
+        if (globalType->isIntegerTy() && globalType != m_boolType)
+        {
             std::string var = getVar(global);
             m_globals.push_back(global);
             m_vars.push_back(var);
-            if (m_boundedIntegers) {
+            if (m_boundedIntegers)
+            {
                 m_bitwidthMap.insert(std::make_pair(var, llvm::cast<llvm::IntegerType>(globalType)->getBitWidth()));
             }
         }
     }
-    if (!m_trivial) {
+    if (!m_trivial)
+    {
         m_phase1 = true;
         visit(function);
     }
-    
-    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i) {
+
+    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i)
+    {
         m_lhs.push_back(Polynomial::create(*i));
     }
-    
 }
 
-void Converter::phase2(llvm::Function *function, std::set<llvm::Function*> &scc, MayMustMap &mmMap, std::map<llvm::Function*, std::set<llvm::GlobalVariable*> > &funcMayZap, TrueFalseMap &tfMap, std::set<llvm::BasicBlock*> &lcbs, ConditionMap &elcMap)
+void Converter::phase2(llvm::Function *function, std::set<llvm::Function *> &scc, MayMustMap &mmMap, std::map<llvm::Function *, std::set<llvm::GlobalVariable *>> &funcMayZap, TrueFalseMap &tfMap, std::set<llvm::BasicBlock *> &lcbs, ConditionMap &elcMap)
 {
-    if (m_trivial) {
+    if (m_trivial)
+    {
         m_rules.push_back(Rule::create(Term::create(getEval(m_function, "start"), m_lhs), Term::create(getEval(m_function, "stop"), m_lhs), Constraint::_true));
         return;
     }
@@ -182,12 +201,14 @@ void Converter::phase2(llvm::Function *function, std::set<llvm::Function*> &scc,
     m_elcMap = elcMap;
     m_phase1 = false;
 
-    for (llvm::Function::iterator bb = m_function->begin(), end = m_function->end(); bb != end; ++bb) {
+    for (llvm::Function::iterator bb = m_function->begin(), end = m_function->end(); bb != end; ++bb)
+    {
         visitBB(bb);
     }
 
     // add rules from returns to stop
-    for (std::list<llvm::BasicBlock*>::iterator i = m_returns.begin(), e = m_returns.end(); i != e; ++i) {
+    for (std::list<llvm::BasicBlock *>::iterator i = m_returns.begin(), e = m_returns.end(); i != e; ++i)
+    {
         ref<Term> lhs = Term::create(getEval(*i, "out"), m_lhs);
         ref<Term> rhs = Term::create(getEval(m_function, "stop"), m_lhs);
         ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
@@ -195,45 +216,57 @@ void Converter::phase2(llvm::Function *function, std::set<llvm::Function*> &scc,
     }
 }
 
-std::list<ref<Rule> > Converter::getRules()
+std::list<ref<Rule>> Converter::getRules()
 {
     return m_rules;
 }
 
-std::list<ref<Rule> > Converter::getCondensedRules()
+std::list<ref<Rule>> Converter::getCondensedRules()
 {
-    std::list<ref<Rule> > good;
-    std::list<ref<Rule> > junk;
-    std::list<ref<Rule> > res;
-    for (std::list<ref<Rule> >::iterator i = m_rules.begin(), e = m_rules.end(); i != e; ++i) {
+    std::list<ref<Rule>> good;
+    std::list<ref<Rule>> junk;
+    std::list<ref<Rule>> res;
+    for (std::list<ref<Rule>>::iterator i = m_rules.begin(), e = m_rules.end(); i != e; ++i)
+    {
         ref<Rule> rule = *i;
         std::string f = rule->getLeft()->getFunctionSymbol();
-        if (m_controlPoints.find(f) != m_controlPoints.end()) {
+        if (m_controlPoints.find(f) != m_controlPoints.end())
+        {
             good.push_back(rule);
-        } else {
+        }
+        else
+        {
             junk.push_back(rule);
         }
     }
-    for (std::list<ref<Rule> >::iterator i = good.begin(), e = good.end(); i != e; ++i) {
+    for (std::list<ref<Rule>>::iterator i = good.begin(), e = good.end(); i != e; ++i)
+    {
         ref<Rule> rule = *i;
-        std::vector<ref<Rule> > todo;
+        std::vector<ref<Rule>> todo;
         todo.push_back(rule);
-        while (!todo.empty()) {
+        while (!todo.empty())
+        {
             ref<Rule> r = *todo.begin();
             todo.erase(todo.begin());
             ref<Term> rhs = r->getRight();
             std::string f = rhs->getFunctionSymbol();
-            if (m_controlPoints.find(f) != m_controlPoints.end()) {
+            if (m_controlPoints.find(f) != m_controlPoints.end())
+            {
                 res.push_back(r);
-            } else {
-                std::list<ref<Rule> > newtodo;
-                for (std::list<ref<Rule> >::iterator ii = junk.begin(), ee = junk.end(); ii != ee; ++ii) {
+            }
+            else
+            {
+                std::list<ref<Rule>> newtodo;
+                for (std::list<ref<Rule>>::iterator ii = junk.begin(), ee = junk.end(); ii != ee; ++ii)
+                {
                     ref<Rule> junkrule = *ii;
-                    if (junkrule->getLeft()->getFunctionSymbol() == f) {
-                        std::map<std::string, ref<Polynomial> > subby;
-                        std::list<ref<Polynomial> > rhsargs = rhs->getArgs();
-                        std::list<ref<Polynomial> >::iterator ai = rhsargs.begin();
-                        for (std::list<std::string>::iterator vi = m_vars.begin(), ve = m_vars.end(); vi != ve; ++vi, ++ai) {
+                    if (junkrule->getLeft()->getFunctionSymbol() == f)
+                    {
+                        std::map<std::string, ref<Polynomial>> subby;
+                        std::list<ref<Polynomial>> rhsargs = rhs->getArgs();
+                        std::list<ref<Polynomial>>::iterator ai = rhsargs.begin();
+                        for (std::list<std::string>::iterator vi = m_vars.begin(), ve = m_vars.end(); vi != ve; ++vi, ++ai)
+                        {
                             subby.insert(std::make_pair(*vi, *ai));
                         }
                         ref<Rule> newRule = Rule::create(r->getLeft(), junkrule->getRight()->instantiate(&subby), Operator::create(r->getConstraint(), junkrule->getConstraint()->instantiate(&subby), Operator::And));
@@ -250,15 +283,19 @@ std::list<ref<Rule> > Converter::getCondensedRules()
 std::string Converter::getVar(llvm::Value *V)
 {
     std::string name = V->getName();
-    if (!name.empty() && name[0] == '\'') {
+    if (!name.empty() && name[0] == '\'')
+    {
         name = name.substr(1);
-    } else {
+    }
+    else
+    {
         name = "v" + name;
     }
     std::ostringstream tmp;
     tmp << name;
     std::string res = tmp.str();
-    if (m_boundedIntegers && V->getType()->isIntegerTy()) {
+    if (m_boundedIntegers && V->getType()->isIntegerTy())
+    {
         m_bitwidthMap.insert(std::make_pair(res, llvm::cast<llvm::IntegerType>(V->getType())->getBitWidth()));
     }
     return res;
@@ -276,7 +313,8 @@ std::string Converter::getEval(llvm::BasicBlock *bb, std::string inout)
     std::ostringstream tmp;
     tmp << "eval_" << bb->getName().str() << '_' << inout;
     std::string res = tmp.str();
-    if (inout == "in" && (!m_onlyMultiPredIsControl || bb->getUniquePredecessor() == NULL)) {
+    if (inout == "in" && (!m_onlyMultiPredIsControl || bb->getUniquePredecessor() == NULL))
+    {
         m_controlPoints.insert(res);
     }
     return res;
@@ -291,16 +329,20 @@ std::string Converter::getEval(llvm::Function *func, std::string startstop)
 
 ref<Polynomial> Converter::getPolynomial(llvm::Value *V)
 {
-    if (llvm::isa<llvm::ConstantInt>(V)) {
+    if (llvm::isa<llvm::ConstantInt>(V))
+    {
         mpz_t value;
         mpz_init(value);
-        if (m_boundedIntegers && m_unsignedEncoding) {
-            uint64_t cv = static_cast<llvm::ConstantInt*>(V)->getZExtValue();
+        if (m_boundedIntegers && m_unsignedEncoding)
+        {
+            uint64_t cv = static_cast<llvm::ConstantInt *>(V)->getZExtValue();
             std::ostringstream tmp;
             tmp << cv;
             gmp_sscanf(tmp.str().data(), "%Zu", value);
-        } else {
-            int64_t cv = static_cast<llvm::ConstantInt*>(V)->getSExtValue();
+        }
+        else
+        {
+            int64_t cv = static_cast<llvm::ConstantInt *>(V)->getSExtValue();
             std::ostringstream tmp;
             tmp << cv;
             gmp_sscanf(tmp.str().data(), "%Zd", value);
@@ -308,80 +350,104 @@ ref<Polynomial> Converter::getPolynomial(llvm::Value *V)
         ref<Polynomial> res = Polynomial::create(value);
         mpz_clear(value);
         return res;
-    } else if (llvm::isa<llvm::Instruction>(V) || llvm::isa<llvm::Argument>(V) || llvm::isa<llvm::GlobalVariable>(V)) {
+    }
+    else if (llvm::isa<llvm::Instruction>(V) || llvm::isa<llvm::Argument>(V) || llvm::isa<llvm::GlobalVariable>(V))
+    {
         std::string res = getVar(V);
         return Polynomial::create(getVar(V));
-    } else {
+    }
+    else
+    {
         return Polynomial::create(getNondef(V));
     }
 }
 
-std::list<ref<Polynomial> > Converter::getNewArgs(llvm::Value &V, ref<Polynomial> p)
+std::list<ref<Polynomial>> Converter::getNewArgs(llvm::Value &V, ref<Polynomial> p)
 {
-    std::list<ref<Polynomial> > res;
+    std::list<ref<Polynomial>> res;
     std::string Vname = getVar(&V);
-    std::list<ref<Polynomial> >::iterator pp = m_lhs.begin();
-    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i, ++pp) {
-        if (Vname == *i) {
+    std::list<ref<Polynomial>>::iterator pp = m_lhs.begin();
+    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i, ++pp)
+    {
+        if (Vname == *i)
+        {
             res.push_back(p);
-        } else {
+        }
+        else
+        {
             res.push_back(*pp);
         }
     }
     return res;
 }
 
-std::list<ref<Polynomial> > Converter::getZappedArgs(std::set<llvm::GlobalVariable*> toZap)
+std::list<ref<Polynomial>> Converter::getZappedArgs(std::set<llvm::GlobalVariable *> toZap)
 {
-    std::list<ref<Polynomial> > res;
-    std::list<ref<Polynomial> >::iterator pp = m_lhs.begin();
-    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i, ++pp) {
+    std::list<ref<Polynomial>> res;
+    std::list<ref<Polynomial>>::iterator pp = m_lhs.begin();
+    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i, ++pp)
+    {
         bool doZap = false;
         const llvm::Type *zapType = NULL;
-        for (std::set<llvm::GlobalVariable*>::iterator zap = toZap.begin(), zape = toZap.end(); zap != zape; ++zap) {
-            if (getVar(*zap) == *i) {
+        for (std::set<llvm::GlobalVariable *>::iterator zap = toZap.begin(), zape = toZap.end(); zap != zape; ++zap)
+        {
+            if (getVar(*zap) == *i)
+            {
                 doZap = true;
                 zapType = llvm::cast<llvm::PointerType>((*zap)->getType())->getContainedType(0);
                 break;
             }
         }
-        if (doZap) {
+        if (doZap)
+        {
             std::string nondef = getNondef(NULL);
-            if (m_boundedIntegers) {
+            if (m_boundedIntegers)
+            {
                 m_bitwidthMap.insert(std::make_pair(nondef, llvm::cast<llvm::IntegerType>(zapType)->getBitWidth()));
             }
             res.push_back(Polynomial::create(nondef));
-        } else {
+        }
+        else
+        {
             res.push_back(*pp);
         }
     }
     return res;
 }
 
-std::list<ref<Polynomial> > Converter::getZappedArgs(std::set<llvm::GlobalVariable*> toZap, llvm::Value &V, ref<Polynomial> p)
+std::list<ref<Polynomial>> Converter::getZappedArgs(std::set<llvm::GlobalVariable *> toZap, llvm::Value &V, ref<Polynomial> p)
 {
-    std::list<ref<Polynomial> > res;
+    std::list<ref<Polynomial>> res;
     std::string Vname = getVar(&V);
-    std::list<ref<Polynomial> >::iterator pp = m_lhs.begin();
-    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i, ++pp) {
+    std::list<ref<Polynomial>>::iterator pp = m_lhs.begin();
+    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i, ++pp)
+    {
         bool doZap = false;
         const llvm::Type *zapType = NULL;
-        for (std::set<llvm::GlobalVariable*>::iterator zap = toZap.begin(), zape = toZap.end(); zap != zape; ++zap) {
-            if (getVar(*zap) == *i) {
+        for (std::set<llvm::GlobalVariable *>::iterator zap = toZap.begin(), zape = toZap.end(); zap != zape; ++zap)
+        {
+            if (getVar(*zap) == *i)
+            {
                 doZap = true;
                 zapType = llvm::cast<llvm::PointerType>((*zap)->getType())->getContainedType(0);
                 break;
             }
         }
-        if (doZap) {
+        if (doZap)
+        {
             std::string nondef = getNondef(NULL);
-            if (m_boundedIntegers) {
+            if (m_boundedIntegers)
+            {
                 m_bitwidthMap.insert(std::make_pair(nondef, llvm::cast<llvm::IntegerType>(zapType)->getBitWidth()));
             }
             res.push_back(Polynomial::create(nondef));
-        } else if (Vname == *i) {
+        }
+        else if (Vname == *i)
+        {
             res.push_back(p);
-        } else {
+        }
+        else
+        {
             res.push_back(*pp);
         }
     }
@@ -390,13 +456,16 @@ std::list<ref<Polynomial> > Converter::getZappedArgs(std::set<llvm::GlobalVariab
 
 ref<Constraint> Converter::getConditionFromValue(llvm::Value *cond)
 {
-    if (llvm::isa<llvm::ConstantInt>(cond)) {
+    if (llvm::isa<llvm::ConstantInt>(cond))
+    {
         return Atom::create(getPolynomial(cond), Polynomial::null, Atom::Neq);
     }
-    if (llvm::isa<llvm::Argument>(cond) && cond->getType() == m_boolType) {
+    if (llvm::isa<llvm::Argument>(cond) && cond->getType() == m_boolType)
+    {
         return Nondef::create();
     }
-    if (!llvm::isa<llvm::Instruction>(cond)) {
+    if (!llvm::isa<llvm::Instruction>(cond))
+    {
         cond->dump();
         std::cerr << "Cannot handle non-instructions!" << std::endl;
         exit(5);
@@ -407,64 +476,97 @@ ref<Constraint> Converter::getConditionFromValue(llvm::Value *cond)
 
 ref<Constraint> Converter::getConditionFromInstruction(llvm::Instruction *I)
 {
-    if (llvm::isa<llvm::ZExtInst>(I)) {
+    if (llvm::isa<llvm::ZExtInst>(I))
+    {
         return getConditionFromValue(I->getOperand(0));
     }
-    if (I->getType() != m_boolType) {
+    if (I->getType() != m_boolType)
+    {
         return Atom::create(getPolynomial(I), Polynomial::null, Atom::Neq);
     }
-    if (llvm::isa<llvm::CmpInst>(I)) {
+    if (llvm::isa<llvm::CmpInst>(I))
+    {
         llvm::CmpInst *cmp = llvm::cast<llvm::CmpInst>(I);
-        if (cmp->getOperand(0)->getType()->isPointerTy()) {
+        if (cmp->getOperand(0)->getType()->isPointerTy())
+        {
             return Nondef::create();
-        } else if (cmp->getOperand(0)->getType()->isFloatingPointTy()) {
+        }
+        else if (cmp->getOperand(0)->getType()->isFloatingPointTy())
+        {
             return Nondef::create();
-        } else {
+        }
+        else
+        {
             llvm::CmpInst::Predicate pred = cmp->getPredicate();
-            if (m_boundedIntegers && !m_unsignedEncoding && (pred == llvm::CmpInst::ICMP_UGT || pred == llvm::CmpInst::ICMP_UGE || pred == llvm::CmpInst::ICMP_ULT || pred == llvm::CmpInst::ICMP_ULE)) {
+            if (m_boundedIntegers && !m_unsignedEncoding && (pred == llvm::CmpInst::ICMP_UGT || pred == llvm::CmpInst::ICMP_UGE || pred == llvm::CmpInst::ICMP_ULT || pred == llvm::CmpInst::ICMP_ULE))
+            {
                 return getUnsignedComparisonForSignedBounded(pred, getPolynomial(cmp->getOperand(0)), getPolynomial(cmp->getOperand(1)));
-            } else if (m_boundedIntegers && m_unsignedEncoding && (pred == llvm::CmpInst::ICMP_SGT || pred == llvm::CmpInst::ICMP_SGE || pred == llvm::CmpInst::ICMP_SLT || pred == llvm::CmpInst::ICMP_SLE)) {
+            }
+            else if (m_boundedIntegers && m_unsignedEncoding && (pred == llvm::CmpInst::ICMP_SGT || pred == llvm::CmpInst::ICMP_SGE || pred == llvm::CmpInst::ICMP_SLT || pred == llvm::CmpInst::ICMP_SLE))
+            {
                 unsigned int bitwidth = llvm::cast<llvm::IntegerType>(cmp->getOperand(0)->getType())->getBitWidth();
                 return getSignedComparisonForUnsignedBounded(pred, getPolynomial(cmp->getOperand(0)), getPolynomial(cmp->getOperand(1)), bitwidth);
-            } else {
+            }
+            else
+            {
                 return Atom::create(getPolynomial(cmp->getOperand(0)), getPolynomial(cmp->getOperand(1)), getAtomType(pred));
             }
         }
     }
     std::string opcodeName = I->getOpcodeName();
-    if (opcodeName == "and") {
+    if (opcodeName == "and")
+    {
         return Operator::create(getConditionFromValue(I->getOperand(0)), getConditionFromValue(I->getOperand(1)), Operator::And);
-    } else if (opcodeName == "or") {
+    }
+    else if (opcodeName == "or")
+    {
         return Operator::create(getConditionFromValue(I->getOperand(0)), getConditionFromValue(I->getOperand(1)), Operator::Or);
-    } else if (opcodeName == "xor") {
+    }
+    else if (opcodeName == "xor")
+    {
         llvm::ConstantInt *ci;
         unsigned int realIdx;
-        if (llvm::isa<llvm::ConstantInt>(I->getOperand(0))) {
+        if (llvm::isa<llvm::ConstantInt>(I->getOperand(0)))
+        {
             ci = llvm::cast<llvm::ConstantInt>(I->getOperand(0));
             realIdx = 1;
-        } else {
+        }
+        else
+        {
             ci = llvm::cast<llvm::ConstantInt>(I->getOperand(1));
             realIdx = 0;
         }
-        if (ci->isOne()) {
+        if (ci->isOne())
+        {
             return Negation::create(getConditionFromValue(I->getOperand(realIdx)));
-        } else {
+        }
+        else
+        {
             return getConditionFromValue(I->getOperand(realIdx));
         }
-    } else if (opcodeName == "select") {
+    }
+    else if (opcodeName == "select")
+    {
         llvm::ConstantInt *opOne = llvm::dyn_cast<llvm::ConstantInt>(I->getOperand(1));
         llvm::ConstantInt *opTwo = llvm::dyn_cast<llvm::ConstantInt>(I->getOperand(2));
-        if (opOne != NULL && opOne->isOne() && opTwo != NULL && !opTwo->isOne()) {
+        if (opOne != NULL && opOne->isOne() && opTwo != NULL && !opTwo->isOne())
+        {
             // select ... true false (this actually occurs in some bitcode)
             return getConditionFromValue(I->getOperand(0));
-        } else if (opOne != NULL && opOne->isOne()) {
+        }
+        else if (opOne != NULL && opOne->isOne())
+        {
             // select ... true ...
             // true --> or
             return Operator::create(getConditionFromValue(I->getOperand(0)), getConditionFromValue(I->getOperand(2)), Operator::Or);
-        } else if (opTwo != NULL && !opTwo->isOne()) {
+        }
+        else if (opTwo != NULL && !opTwo->isOne())
+        {
             // select ... ... false
             return Operator::create(getConditionFromValue(I->getOperand(0)), getConditionFromValue(I->getOperand(1)), Operator::And);
-        } else {
+        }
+        else
+        {
             // select ... ... ...
             ref<Constraint> test = getConditionFromValue(I->getOperand(0));
             ref<Constraint> negTest = Negation::create(test);
@@ -472,16 +574,20 @@ ref<Constraint> Converter::getConditionFromInstruction(llvm::Instruction *I)
             ref<Constraint> falsePart = Operator::create(negTest, getConditionFromValue(I->getOperand(2)), Operator::And);
             return Operator::create(truePart, falsePart, Operator::Or);
         }
-    } else {
+    }
+    else
+    {
         return Nondef::create();
     }
 }
 
 ref<Constraint> Converter::getUnsignedComparisonForSignedBounded(llvm::CmpInst::Predicate pred, ref<Polynomial> x, ref<Polynomial> y)
 {
-    switch (pred) {
+    switch (pred)
+    {
     case llvm::CmpInst::ICMP_UGT:
-    case llvm::CmpInst::ICMP_UGE: {
+    case llvm::CmpInst::ICMP_UGE:
+    {
         ref<Constraint> xge = Atom::create(x, Polynomial::null, Atom::Geq);
         ref<Constraint> yge = Atom::create(y, Polynomial::null, Atom::Geq);
         ref<Constraint> xlt = Atom::create(x, Polynomial::null, Atom::Lss);
@@ -532,9 +638,11 @@ ref<Constraint> Converter::getUnsignedComparisonForSignedBounded(llvm::CmpInst::
 ref<Constraint> Converter::getSignedComparisonForUnsignedBounded(llvm::CmpInst::Predicate pred, ref<Polynomial> x, ref<Polynomial> y, unsigned int bitwidth)
 {
     ref<Polynomial> maxpos = Polynomial::simax(bitwidth);
-    switch (pred) {
+    switch (pred)
+    {
     case llvm::CmpInst::ICMP_SGT:
-    case llvm::CmpInst::ICMP_SGE: {
+    case llvm::CmpInst::ICMP_SGE:
+    {
         ref<Constraint> xle = Atom::create(x, maxpos, Atom::Leq);
         ref<Constraint> yle = Atom::create(y, maxpos, Atom::Leq);
         ref<Constraint> xgt = Atom::create(x, maxpos, Atom::Gtr);
@@ -584,7 +692,8 @@ ref<Constraint> Converter::getSignedComparisonForUnsignedBounded(llvm::CmpInst::
 
 Atom::AType Converter::getAtomType(llvm::CmpInst::Predicate pred)
 {
-    switch (pred) {
+    switch (pred)
+    {
     case llvm::CmpInst::ICMP_EQ:
         return Atom::Equ;
     case llvm::CmpInst::ICMP_NE:
@@ -625,24 +734,27 @@ Atom::AType Converter::getAtomType(llvm::CmpInst::Predicate pred)
     }
 }
 
-ref<Constraint> Converter::buildConjunction(std::set<llvm::Value*> &trues, std::set<llvm::Value*> &falses)
+ref<Constraint> Converter::buildConjunction(std::set<llvm::Value *> &trues, std::set<llvm::Value *> &falses)
 {
     ref<Constraint> res = Constraint::_true;
-    for (std::set<llvm::Value*>::iterator i = trues.begin(), e = trues.end(); i != e; ++i) {
+    for (std::set<llvm::Value *>::iterator i = trues.begin(), e = trues.end(); i != e; ++i)
+    {
         ref<Constraint> c = getConditionFromValue(*i)->toNNF(false);
         res = Operator::create(res, c, Operator::And);
     }
-    for (std::set<llvm::Value*>::iterator i = falses.begin(), e = falses.end(); i != e; ++i) {
+    for (std::set<llvm::Value *>::iterator i = falses.begin(), e = falses.end(); i != e; ++i)
+    {
         ref<Constraint> c = getConditionFromValue(*i)->toNNF(true);
         res = Operator::create(res, c, Operator::And);
     }
     return res;
 }
 
-ref<Constraint> Converter::buildBoundConjunction(std::set<quadruple<llvm::Value*, llvm::CmpInst::Predicate, llvm::Value*, llvm::Value*> > &bounds)
+ref<Constraint> Converter::buildBoundConjunction(std::set<quadruple<llvm::Value *, llvm::CmpInst::Predicate, llvm::Value *, llvm::Value *>> &bounds)
 {
     ref<Constraint> res = Constraint::_true;
-    for (std::set<quadruple<llvm::Value*, llvm::CmpInst::Predicate, llvm::Value*, llvm::Value*> >::iterator i = bounds.begin(), e = bounds.end(); i != e; ++i) {
+    for (std::set<quadruple<llvm::Value *, llvm::CmpInst::Predicate, llvm::Value *, llvm::Value *>>::iterator i = bounds.begin(), e = bounds.end(); i != e; ++i)
+    {
         ref<Polynomial> p = getPolynomial(i->first);
         ref<Polynomial> q1 = getPolynomial(i->third);
         ref<Polynomial> q2 = getPolynomial(i->fourth);
@@ -655,110 +767,135 @@ ref<Constraint> Converter::buildBoundConjunction(std::set<quadruple<llvm::Value*
 void Converter::visitBB(llvm::BasicBlock *bb)
 {
     // start
-    if (bb == m_entryBlock) {
+    if (bb == m_entryBlock)
+    {
         ref<Term> lhs = Term::create(getEval(m_function, "start"), m_lhs);
         ref<Term> rhs = Term::create(getEval(bb, "in"), m_lhs);
         ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
         m_rules.push_back(rule);
-        
-        if (!m_phase1 && m_t2Output) {
-            std::cout << "START: " << (bb->getName().str()) << ";" << std::endl << std::endl;
+
+        if (!m_phase1 && m_t2Output)
+        {
+            std::cout << "START: " << (bb->getName().str()) << ";" << std::endl
+                      << std::endl;
         }
     }
-    
-    if (!m_phase1 && m_t2Output) {
+
+    if (!m_phase1 && m_t2Output)
+    {
         std::cout << "FROM: " << (bb->getName().str()) << ";" << std::endl;
     }
 
     // return
-    if (llvm::isa<llvm::ReturnInst>(bb->getTerminator())) {
+    if (llvm::isa<llvm::ReturnInst>(bb->getTerminator()))
+    {
         m_returns.push_back(bb);
     }
 
     // visit instructions
     m_blockRules.clear();
     visit(*bb);
-    
+
     // jump from bb_in to first instruction or bb_out
     // get condition
     ref<Constraint> cond;
     TrueFalseMap::iterator it = m_tfMap.find(bb);
-    if (it != m_tfMap.end()) {
+    if (it != m_tfMap.end())
+    {
         TrueFalsePair tfp = it->second;
-        std::set<llvm::Value*> trues = tfp.first;
-        std::set<llvm::Value*> falses = tfp.second;
+        std::set<llvm::Value *> trues = tfp.first;
+        std::set<llvm::Value *> falses = tfp.second;
         cond = buildConjunction(trues, falses);
-    } else {
+    }
+    else
+    {
         cond = Constraint::_true;
     }
     ConditionMap::iterator it2 = m_elcMap.find(bb);
-    if (it2 != m_elcMap.end()) {
-        std::set<quadruple<llvm::Value*, llvm::CmpInst::Predicate, llvm::Value*, llvm::Value*> > bounds = it2->second;
+    if (it2 != m_elcMap.end())
+    {
+        std::set<quadruple<llvm::Value *, llvm::CmpInst::Predicate, llvm::Value *, llvm::Value *>> bounds = it2->second;
         ref<Constraint> c_new = buildBoundConjunction(bounds);
         cond = Operator::create(cond, c_new, Operator::And);
     }
     // find first instruction
     llvm::Instruction *first = NULL;
     unsigned int firstID = 0;
-    for (llvm::BasicBlock::iterator i = bb->begin(), e = bb->end(); i != e; ++i) {
-        std::map<llvm::Instruction*, unsigned int>::iterator found = m_idMap.find(i);
-        if (found != m_idMap.end()) {
+    for (llvm::BasicBlock::iterator i = bb->begin(), e = bb->end(); i != e; ++i)
+    {
+        std::map<llvm::Instruction *, unsigned int>::iterator found = m_idMap.find(i);
+        if (found != m_idMap.end())
+        {
             first = i;
             firstID = found->second;
             break;
         }
     }
-    if (first != NULL) {
+    if (first != NULL)
+    {
         ref<Term> lhs = Term::create(getEval(bb, "in"), m_lhs);
         ref<Term> rhs = Term::create(getEval(firstID), m_lhs);
         ref<Rule> rule = Rule::create(lhs, rhs, cond);
         m_rules.push_back(rule);
-    } else {
+    }
+    else
+    {
         ref<Term> lhs = Term::create(getEval(bb, "in"), m_lhs);
         ref<Term> rhs = Term::create(getEval(bb, "out"), m_lhs);
         ref<Rule> rule = Rule::create(lhs, rhs, cond);
         m_rules.push_back(rule);
     }
-    
+
     // insert rules for instructions
     m_rules.insert(m_rules.end(), m_blockRules.begin(), m_blockRules.end());
-    
+
     // jump from last instruction in bb to bb_out
     llvm::Instruction *last = NULL;
     unsigned int lastID = 0;
-    for (llvm::BasicBlock::iterator i = bb->begin(), e = bb->end(); i != e; ++i) {
+    for (llvm::BasicBlock::iterator i = bb->begin(), e = bb->end(); i != e; ++i)
+    {
         // terminators are not in the map
-        std::map<llvm::Instruction*, unsigned int>::iterator found = m_idMap.find(i);
-        if (found != m_idMap.end()) {
+        std::map<llvm::Instruction *, unsigned int>::iterator found = m_idMap.find(i);
+        if (found != m_idMap.end())
+        {
             last = i;
             lastID = found->second;
         }
     }
-    if (last != NULL) {
-        ref<Term> lhs = Term::create(getEval(lastID+1), m_lhs);
+    if (last != NULL)
+    {
+        ref<Term> lhs = Term::create(getEval(lastID + 1), m_lhs);
         m_counter++;
         ref<Term> rhs = Term::create(getEval(bb, "out"), m_lhs);
         ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
         m_rules.push_back(rule);
     }
-    
+
     // jump from bb_out to succs
     llvm::TerminatorInst *terminator = bb->getTerminator();
-    if (llvm::isa<llvm::ReturnInst>(terminator)) {
-    } else if (llvm::isa<llvm::UnreachableInst>(terminator)) {
+    if (llvm::isa<llvm::ReturnInst>(terminator))
+    {
+    }
+    else if (llvm::isa<llvm::UnreachableInst>(terminator))
+    {
         ref<Term> lhs = Term::create(getEval(bb, "out"), m_lhs);
         ref<Term> rhs = Term::create(getEval(m_function, "stop"), m_lhs);
         ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
         m_rules.push_back(rule);
-    } else {
+    }
+    else
+    {
         llvm::BranchInst *branch = llvm::cast<llvm::BranchInst>(terminator);
         bool useCondition = (!m_onlyLoopConditions || m_loopConditionBlocks.find(bb) != m_loopConditionBlocks.end());
-        if (branch->isUnconditional()) {
+        if (branch->isUnconditional())
+        {
             ref<Term> lhs = Term::create(getEval(bb, "out"), m_lhs);
             ref<Term> rhs = Term::create(getEval(branch->getSuccessor(0), "in"), getArgsWithPhis(bb, branch->getSuccessor(0)));
             ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
             m_rules.push_back(rule);
-        } else {
+        }
+        else
+        {
             ref<Term> lhs = Term::create(getEval(bb, "out"), m_lhs);
             ref<Term> rhs1 = Term::create(getEval(branch->getSuccessor(0), "in"), getArgsWithPhis(bb, branch->getSuccessor(0)));
             ref<Term> rhs2 = Term::create(getEval(branch->getSuccessor(1), "in"), getArgsWithPhis(bb, branch->getSuccessor(1)));
@@ -769,32 +906,40 @@ void Converter::visitBB(llvm::BasicBlock *bb)
             m_rules.push_back(rule2);
         }
     }
-    if (m_t2Output) {
+    if (m_t2Output)
+    {
         std::cout << std::endl;
     }
 }
 
-std::list<ref<Polynomial> > Converter::getArgsWithPhis(llvm::BasicBlock *from, llvm::BasicBlock *to)
+std::list<ref<Polynomial>> Converter::getArgsWithPhis(llvm::BasicBlock *from, llvm::BasicBlock *to)
 {
-    std::list<ref<Polynomial> > res;
-    std::map<std::string, ref<Polynomial> > phiValues;
-    for (llvm::BasicBlock::iterator i = to->begin(), e = to->end(); i != e; ++i) {
-        if (!llvm::isa<llvm::PHINode>(*i)) {
+    std::list<ref<Polynomial>> res;
+    std::map<std::string, ref<Polynomial>> phiValues;
+    for (llvm::BasicBlock::iterator i = to->begin(), e = to->end(); i != e; ++i)
+    {
+        if (!llvm::isa<llvm::PHINode>(*i))
+        {
             break;
         }
         llvm::PHINode *phi = llvm::cast<llvm::PHINode>(i);
-        if (phi->getType() == m_boolType || !phi->getType()->isIntegerTy()) {
+        if (phi->getType() == m_boolType || !phi->getType()->isIntegerTy())
+        {
             continue;
         }
         std::string PHIName = getVar(phi);
         phiValues.insert(std::make_pair(PHIName, getPolynomial(phi->getIncomingValueForBlock(from))));
     }
-    std::list<ref<Polynomial> >::iterator pp = m_lhs.begin();
-    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i, ++pp) {
-        std::map<std::string, ref<Polynomial> >::iterator found = phiValues.find(*i);
-        if (found == phiValues.end()) {
+    std::list<ref<Polynomial>>::iterator pp = m_lhs.begin();
+    for (std::list<std::string>::iterator i = m_vars.begin(), e = m_vars.end(); i != e; ++i, ++pp)
+    {
+        std::map<std::string, ref<Polynomial>>::iterator found = phiValues.find(*i);
+        if (found == phiValues.end())
+        {
             res.push_back(*pp);
-        } else {
+        }
+        else
+        {
             res.push_back(found->second);
         }
     }
@@ -803,116 +948,134 @@ std::list<ref<Polynomial> > Converter::getArgsWithPhis(llvm::BasicBlock *from, l
 
 void Converter::visitTerminatorInst(llvm::TerminatorInst &I)
 {
-    if(!m_phase1){
+    if (!m_phase1)
+    {
         //This is a self loop to the last instruction.
         //ToDO: Remove the self-loop addition in T2 in these cases.
-        if (llvm::isa<llvm::ReturnInst>(I)){
-            llvm::BasicBlock* pBlock = I.getParent();
-            if (m_t2Output) {
+        if (llvm::isa<llvm::ReturnInst>(I))
+        {
+            llvm::BasicBlock *pBlock = I.getParent();
+            if (m_t2Output)
+            {
                 std::string retNode = (pBlock->getName().str()) + "_ret";
                 std::cout << "TO: " << retNode << ";" << std::endl;
             }
         }
-        else if (llvm::isa<llvm::UnreachableInst>(I)) {
-            
+        else if (llvm::isa<llvm::UnreachableInst>(I))
+        {
         }
-        else {
+        else
+        {
             int64_t cv;
             std::string valName;
             llvm::BranchInst *branch = llvm::cast<llvm::BranchInst>(&I);
-            llvm::BasicBlock* pBlock = branch->getParent();
-            
+            llvm::BasicBlock *pBlock = branch->getParent();
+
             //Indicates we've already passed Phase1, meaning before
             //transitioning to next block we must update the correct
             //phi variables which were collected in Phase1.
-            std::map<llvm::BasicBlock*, std::list<std::pair<std::string,llvm::Value*> > >::iterator it = m_phiMap.find(pBlock);
-            if (it != m_phiMap.end()){
-                std::list<std::pair<std::string,llvm::Value*> >::iterator it2;
-                
+            std::map<llvm::BasicBlock *, std::list<std::pair<std::string, llvm::Value *>>>::iterator it = m_phiMap.find(pBlock);
+            if (it != m_phiMap.end())
+            {
+                std::list<std::pair<std::string, llvm::Value *>>::iterator it2;
+
                 //All phi-instructions at the beginning of a block are meant to be executed simultaneously.
                 //To achieve this parallel assignment, we thus assign the fresh values to %var__temp
                 //or all phi instructions, and then add a set of %var :=var__temp instructions.
-                for (it2 = (m_phiMap[pBlock]).begin(); it2 != (m_phiMap[pBlock]).end(); it2++) {
-                 
+                for (it2 = (m_phiMap[pBlock]).begin(); it2 != (m_phiMap[pBlock]).end(); it2++)
+                {
+
                     std::string varAssign = "var__temp_" + (it2->first);
-                    llvm::Value* iValue = it2->second;
-                    if(iValue->hasName()){
+                    llvm::Value *iValue = it2->second;
+                    if (iValue->hasName())
+                    {
                         valName = getVar(iValue);
-                        if (m_t2Output) {
+                        if (m_t2Output)
+                        {
                             std::cout << varAssign << " := " << valName << ";" << std::endl;
                         }
-                        
                     }
-                    else {
-                        if (llvm::isa<llvm::ConstantInt>(iValue)) {
-                            if (m_boundedIntegers && m_unsignedEncoding) {
-                                cv = static_cast<llvm::ConstantInt*>(iValue)->getZExtValue();
+                    else
+                    {
+                        if (llvm::isa<llvm::ConstantInt>(iValue))
+                        {
+                            if (m_boundedIntegers && m_unsignedEncoding)
+                            {
+                                cv = static_cast<llvm::ConstantInt *>(iValue)->getZExtValue();
                             }
-                            else {
-                                cv = static_cast<llvm::ConstantInt*>(iValue)->getSExtValue();
-                                
+                            else
+                            {
+                                cv = static_cast<llvm::ConstantInt *>(iValue)->getSExtValue();
                             }
-                            if (m_t2Output) {
+                            if (m_t2Output)
+                            {
                                 std::cout << varAssign << " := " << cv << ";" << std::endl;
                             }
                         }
                     }
                 }
-                
-                for (it2 = (m_phiMap[pBlock]).begin(); it2 != (m_phiMap[pBlock]).end(); it2++) {
-                    
+
+                for (it2 = (m_phiMap[pBlock]).begin(); it2 != (m_phiMap[pBlock]).end(); it2++)
+                {
+
                     std::string varAssign = "var__temp_" + (it2->first);
                     std::string varOrig = it2->first;
-                    
-                    if (m_t2Output) {
+
+                    if (m_t2Output)
+                    {
                         std::cout << varOrig << " := " << varAssign << ";" << std::endl;
                     }
                 }
             }
-            
-            
-            if (branch->isUnconditional()) {
+
+            if (branch->isUnconditional())
+            {
                 //If unconditional then create the condition true
                 //Later when visiting terminating transition
                 //will print transition from true to BB
-                llvm::BasicBlock* iBlock = branch->getSuccessor(0);
-                if (m_t2Output) {
+                llvm::BasicBlock *iBlock = branch->getSuccessor(0);
+                if (m_t2Output)
+                {
                     std::cout << "TO: " << (iBlock->getName().str()) << ";" << std::endl;
                 }
-                
-            } else {
+            }
+            else
+            {
                 //If conditional use condition to transition to block names
-                llvm::Value* branchVal = branch->getCondition();
+                llvm::Value *branchVal = branch->getCondition();
                 ref<Constraint> c = getConditionFromValue(branchVal);
                 unsigned incomeVals = branch->getNumSuccessors();
-                if (incomeVals > 2) {
+                if (incomeVals > 2)
+                {
                     std::cerr << "Branching instruction should only ever have two incoming values!" << std::endl;
                     exit(1);
                 }
 
-                if (m_t2Output) {
+                if (m_t2Output)
+                {
                     //Given then we're branching, create an intermediate node to branch through via condition.
-                    std::cout << "TO: " << (pBlock->getName().str()) << "_end;" << std::endl << std::endl;
-                    
+                    std::cout << "TO: " << (pBlock->getName().str()) << "_end;" << std::endl
+                              << std::endl;
+
                     //Transition where the condition holds
                     std::cout << "FROM: " << (pBlock->getName().str()) << "_end;" << std::endl;
                     std::cout << "assume(" << (c->toT2String()) << ");" << std::endl;
-                    llvm::BasicBlock* tBlock = branch->getSuccessor(0);
-                    std::cout << "TO: " << (tBlock->getName().str()) << ";" << std::endl << std::endl;
-                    
+                    llvm::BasicBlock *tBlock = branch->getSuccessor(0);
+                    std::cout << "TO: " << (tBlock->getName().str()) << ";" << std::endl
+                              << std::endl;
+
                     //Transition where the condition doesn't hold.
                     std::cout << "FROM: " << (pBlock->getName().str()) << "_end;" << std::endl;
                     std::cout << "assume(" << ((c->toNNF(true))->toT2String()) << ");" << std::endl;
-                    llvm::BasicBlock* fBlock = branch->getSuccessor(1);
+                    llvm::BasicBlock *fBlock = branch->getSuccessor(1);
                     std::cout << "TO: " << (fBlock->getName().str()) << ";" << std::endl;
                 }
             }
-            
         }
     }
 }
 
-void Converter::visitGenericInstruction(llvm::Instruction &I, std::list<ref<Polynomial> > newArgs, ref<Constraint> c)
+void Converter::visitGenericInstruction(llvm::Instruction &I, std::list<ref<Polynomial>> newArgs, ref<Constraint> c)
 {
     m_idMap.insert(std::make_pair(&I, m_counter));
     ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
@@ -929,16 +1092,21 @@ void Converter::visitGenericInstruction(llvm::Instruction &I, ref<Polynomial> va
 
 void Converter::visitAdd(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType || I.getType()->isVectorTy()) {
+    if (I.getType() == m_boolType || I.getType()->isVectorTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> p1 = getPolynomial(I.getOperand(0));
         ref<Polynomial> p2 = getPolynomial(I.getOperand(1));
-        if (m_t2Output) {
-            std::cout << getVar(&I) << " := " << p1->toString() << " + "<< p2->toString() << ";" << std::endl;
+        if (m_t2Output)
+        {
+            std::cout << getVar(&I) << " := " << p1->toString() << " + " << p2->toString() << ";" << std::endl;
         }
         visitGenericInstruction(I, p1->add(p2));
     }
@@ -946,17 +1114,22 @@ void Converter::visitAdd(llvm::BinaryOperator &I)
 
 void Converter::visitSub(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType || I.getType()->isVectorTy()) {
+    if (I.getType() == m_boolType || I.getType()->isVectorTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> p1 = getPolynomial(I.getOperand(0));
         ref<Polynomial> p2 = getPolynomial(I.getOperand(1));
-        
-        if (m_t2Output) {
-            std::cout << getVar(&I) << " := " << p1->toString() << " - "<< p2->toString() << ";" << std::endl;
+
+        if (m_t2Output)
+        {
+            std::cout << getVar(&I) << " := " << p1->toString() << " - " << p2->toString() << ";" << std::endl;
         }
 
         visitGenericInstruction(I, p1->sub(p2));
@@ -965,17 +1138,22 @@ void Converter::visitSub(llvm::BinaryOperator &I)
 
 void Converter::visitMul(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType || I.getType()->isVectorTy()) {
+    if (I.getType() == m_boolType || I.getType()->isVectorTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> p1 = getPolynomial(I.getOperand(0));
         ref<Polynomial> p2 = getPolynomial(I.getOperand(1));
 
-        if (m_t2Output) {
-            std::cout << getVar(&I) << " := " << p1->toString() << " * "<< p2->toString() << ";" << std::endl;
+        if (m_t2Output)
+        {
+            std::cout << getVar(&I) << " := " << p1->toString() << " * " << p2->toString() << ";" << std::endl;
         }
 
         visitGenericInstruction(I, p1->mult(p2));
@@ -1156,28 +1334,39 @@ ref<Constraint> Converter::getExactSDivConstraintForUnbounded(ref<Polynomial> up
 
 void Converter::visitSDiv(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType || I.getType()->isVectorTy()) {
+    if (I.getType() == m_boolType || I.getType()->isVectorTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         ref<Constraint> divC;
         ref<Polynomial> upper = getPolynomial(I.getOperand(0));
         ref<Polynomial> lower = getPolynomial(I.getOperand(1));
-        if (m_divisionConstraintType != None) {
-            if (m_boundedIntegers) {
+        if (m_divisionConstraintType != None)
+        {
+            if (m_boundedIntegers)
+            {
                 unsigned int bitwidth = llvm::cast<llvm::IntegerType>(I.getType())->getBitWidth();
                 divC = m_unsignedEncoding ? getSDivConstraintForUnsignedBounded(upper, lower, nondef, bitwidth) : getSDivConstraintForSignedBounded(upper, lower, nondef);
-            } else {
+            }
+            else
+            {
                 divC = (m_divisionConstraintType == Exact) ? getExactSDivConstraintForUnbounded(upper, lower, nondef) : getSDivConstraintForUnbounded(upper, lower, nondef);
             }
-        } else {
+        }
+        else
+        {
             divC = Constraint::_true;
         }
-        if (m_t2Output) {
-            std::cout << getVar(&I) << " := " << upper->toString() << " / "<< lower->toString() << ";" << std::endl;
+        if (m_t2Output)
+        {
+            std::cout << getVar(&I) << " := " << upper->toString() << " / " << lower->toString() << ";" << std::endl;
         }
         visitGenericInstruction(I, nondef, divC);
     }
@@ -1258,27 +1447,38 @@ ref<Constraint> Converter::getExactUDivConstraintForUnbounded(ref<Polynomial> up
 
 void Converter::visitUDiv(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType || I.getType()->isVectorTy()) {
+    if (I.getType() == m_boolType || I.getType()->isVectorTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         ref<Constraint> divC;
         ref<Polynomial> upper = getPolynomial(I.getOperand(0));
         ref<Polynomial> lower = getPolynomial(I.getOperand(1));
-        if (m_divisionConstraintType != None) {
-            if (m_boundedIntegers) {
+        if (m_divisionConstraintType != None)
+        {
+            if (m_boundedIntegers)
+            {
                 divC = m_unsignedEncoding ? getUDivConstraintForUnsignedBounded(upper, lower, nondef) : getUDivConstraintForSignedBounded(upper, lower, nondef);
-            } else {
+            }
+            else
+            {
                 divC = (m_divisionConstraintType == Exact) ? getExactUDivConstraintForUnbounded(upper, lower, nondef) : getUDivConstraintForUnbounded(upper, lower, nondef);
             }
-        } else {
+        }
+        else
+        {
             divC = Constraint::_true;
         }
-        if (m_t2Output) {
-            std::cout << getVar(&I) << " := " << upper->toString() << " / "<< lower->toString() << ";" << std::endl;
+        if (m_t2Output)
+        {
+            std::cout << getVar(&I) << " := " << upper->toString() << " / " << lower->toString() << ";" << std::endl;
         }
         visitGenericInstruction(I, nondef, divC);
     }
@@ -1400,28 +1600,39 @@ ref<Constraint> Converter::getSRemConstraintForUnsignedBounded(ref<Polynomial> u
 
 void Converter::visitSRem(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType) {
+    if (I.getType() == m_boolType)
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         ref<Constraint> remC;
         ref<Polynomial> upper = getPolynomial(I.getOperand(0));
         ref<Polynomial> lower = getPolynomial(I.getOperand(1));
-        if (m_divisionConstraintType != None) {
-            if (m_boundedIntegers) {
+        if (m_divisionConstraintType != None)
+        {
+            if (m_boundedIntegers)
+            {
                 unsigned int bitwidth = llvm::cast<llvm::IntegerType>(I.getType())->getBitWidth();
                 remC = m_unsignedEncoding ? getSRemConstraintForUnsignedBounded(upper, lower, nondef, bitwidth) : getSRemConstraintForSignedBounded(upper, lower, nondef);
-            } else {
+            }
+            else
+            {
                 remC = getSRemConstraintForUnbounded(upper, lower, nondef);
             }
-        } else {
+        }
+        else
+        {
             remC = Constraint::_true;
         }
-        if (m_t2Output) {
-            std::cout << getVar(&I) << " := " << upper->toString() << " % "<< lower->toString() << ";" << std::endl;
+        if (m_t2Output)
+        {
+            std::cout << getVar(&I) << " := " << upper->toString() << " % " << lower->toString() << ";" << std::endl;
         }
         visitGenericInstruction(I, nondef, remC);
     }
@@ -1495,27 +1706,38 @@ ref<Constraint> Converter::getURemConstraintForUnsignedBounded(ref<Polynomial> u
 
 void Converter::visitURem(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType) {
+    if (I.getType() == m_boolType)
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         ref<Constraint> remC;
         ref<Polynomial> upper = getPolynomial(I.getOperand(0));
         ref<Polynomial> lower = getPolynomial(I.getOperand(1));
-        if (m_divisionConstraintType != None) {
-            if (m_boundedIntegers) {
+        if (m_divisionConstraintType != None)
+        {
+            if (m_boundedIntegers)
+            {
                 remC = m_unsignedEncoding ? getURemConstraintForUnsignedBounded(upper, lower, nondef) : getURemConstraintForSignedBounded(upper, lower, nondef);
-            } else {
+            }
+            else
+            {
                 remC = getURemConstraintForUnbounded(upper, lower, nondef);
             }
-        } else {
+        }
+        else
+        {
             remC = Constraint::_true;
         }
-        if (m_t2Output) {
-            std::cout << getVar(&I) << " := " << upper->toString() << " % "<< lower->toString() << ";" << std::endl;
+        if (m_t2Output)
+        {
+            std::cout << getVar(&I) << " := " << upper->toString() << " % " << lower->toString() << ";" << std::endl;
         }
         visitGenericInstruction(I, nondef, remC);
     }
@@ -1525,7 +1747,8 @@ ref<Constraint> Converter::getAndConstraintForBounded(ref<Polynomial> x, ref<Pol
 {
     ref<Constraint> resLEQx = Atom::create(res, x, Atom::Leq);
     ref<Constraint> resLEQy = Atom::create(res, y, Atom::Leq);
-    if (m_unsignedEncoding) {
+    if (m_unsignedEncoding)
+    {
         return Operator::create(resLEQx, resLEQy, Operator::And);
     }
     ref<Polynomial> null = Polynomial::null;
@@ -1563,19 +1786,26 @@ ref<Constraint> Converter::getAndConstraintForBounded(ref<Polynomial> x, ref<Pol
 
 void Converter::visitAnd(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType) {
+    if (I.getType() == m_boolType)
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
-        if (m_boundedIntegers && m_bitwiseConditions) {
+    }
+    else
+    {
+        if (m_boundedIntegers && m_bitwiseConditions)
+        {
             ref<Polynomial> x = getPolynomial(I.getOperand(0));
             ref<Polynomial> y = getPolynomial(I.getOperand(1));
             ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
             ref<Constraint> c = getAndConstraintForBounded(x, y, nondef);
             visitGenericInstruction(I, nondef, c);
-        } else {
+        }
+        else
+        {
             ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
             visitGenericInstruction(I, nondef);
         }
@@ -1586,7 +1816,8 @@ ref<Constraint> Converter::getOrConstraintForBounded(ref<Polynomial> x, ref<Poly
 {
     ref<Constraint> resGEQx = Atom::create(res, x, Atom::Leq);
     ref<Constraint> resGEQy = Atom::create(res, y, Atom::Leq);
-    if (m_unsignedEncoding) {
+    if (m_unsignedEncoding)
+    {
         return Operator::create(resGEQx, resGEQy, Operator::And);
     }
     ref<Polynomial> null = Polynomial::null;
@@ -1624,19 +1855,26 @@ ref<Constraint> Converter::getOrConstraintForBounded(ref<Polynomial> x, ref<Poly
 
 void Converter::visitOr(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType) {
+    if (I.getType() == m_boolType)
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
-        if (m_boundedIntegers && m_bitwiseConditions) {
+    }
+    else
+    {
+        if (m_boundedIntegers && m_bitwiseConditions)
+        {
             ref<Polynomial> x = getPolynomial(I.getOperand(0));
             ref<Polynomial> y = getPolynomial(I.getOperand(1));
             ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
             ref<Constraint> c = getOrConstraintForBounded(x, y, nondef);
             visitGenericInstruction(I, nondef, c);
-        } else {
+        }
+        else
+        {
             ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
             visitGenericInstruction(I, nondef);
         }
@@ -1645,18 +1883,25 @@ void Converter::visitOr(llvm::BinaryOperator &I)
 
 void Converter::visitXor(llvm::BinaryOperator &I)
 {
-    if (I.getType() == m_boolType) {
+    if (I.getType() == m_boolType)
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
-        if (llvm::isa<llvm::ConstantInt>(I.getOperand(1)) && llvm::cast<llvm::ConstantInt>(I.getOperand(1))->isAllOnesValue()) {
+    }
+    else
+    {
+        if (llvm::isa<llvm::ConstantInt>(I.getOperand(1)) && llvm::cast<llvm::ConstantInt>(I.getOperand(1))->isAllOnesValue())
+        {
             // it is xor %i, -1 --> actually, it is -%i - 1
             ref<Polynomial> p1 = getPolynomial(I.getOperand(0));
             ref<Polynomial> p2 = Polynomial::one;
             visitGenericInstruction(I, p1->constMult(Polynomial::_negone)->sub(p2));
-        } else {
+        }
+        else
+        {
             ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
             visitGenericInstruction(I, nondef);
         }
@@ -1667,59 +1912,79 @@ void Converter::visitCallInst(llvm::CallInst &I)
 {
     llvm::CallSite callSite(&I);
     llvm::Function *calledFunction = callSite.getCalledFunction();
-    if (calledFunction != NULL) {
+    if (calledFunction != NULL)
+    {
         llvm::StringRef functionName = calledFunction->getName();
     }
-    
-    if (m_phase1) {
-        if (I.getType() != m_boolType && I.getType()->isIntegerTy()) {
+
+    if (m_phase1)
+    {
+        if (I.getType() != m_boolType && I.getType()->isIntegerTy())
+        {
             m_vars.push_back(getVar(&I));
         }
-    } else {
+    }
+    else
+    {
         llvm::CallSite callSite(&I);
         llvm::Function *calledFunction = callSite.getCalledFunction();
-        if (calledFunction != NULL) {
+        if (calledFunction != NULL)
+        {
             llvm::StringRef functionName = calledFunction->getName();
-            if (functionName == "__kittel_assume") {
-                if (m_assumeIsControl) {
+            if (functionName == "__kittel_assume")
+            {
+                if (m_assumeIsControl)
+                {
                     m_controlPoints.insert(getEval(m_counter));
                 }
                 ref<Constraint> c = m_onlyLoopConditions ? Constraint::_true : getConditionFromValue(callSite.getArgument(0));
                 visitGenericInstruction(I, m_lhs, c->toNNF(false));
                 return;
-            } else if (functionName.startswith("__kittel_nondef")) {
+            }
+            else if (functionName.startswith("__kittel_nondef"))
+            {
                 ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
                 visitGenericInstruction(I, nondef);
                 return;
             }
         }
-        if (m_complexityTuples) {
+        if (m_complexityTuples)
+        {
             m_controlPoints.insert(getEval(m_counter));
             m_controlPoints.insert(getEval(m_counter + 1));
             m_complexityLHSs.insert(getEval(m_counter));
         }
         // "random" functions
-        if (I.getType()->isIntegerTy() || I.getType()->isVoidTy() || I.getType()->isFloatingPointTy() || I.getType()->isPointerTy() || I.getType()->isVectorTy() || I.getType()->isStructTy() || I.getType()->isArrayTy()) {
-            std::list<llvm::Function*> callees;
-            if (calledFunction != NULL) {
+        if (I.getType()->isIntegerTy() || I.getType()->isVoidTy() || I.getType()->isFloatingPointTy() || I.getType()->isPointerTy() || I.getType()->isVectorTy() || I.getType()->isStructTy() || I.getType()->isArrayTy())
+        {
+            std::list<llvm::Function *> callees;
+            if (calledFunction != NULL)
+            {
                 callees.push_back(calledFunction);
-            } else {
+            }
+            else
+            {
                 callees = getMatchingFunctions(I);
             }
-            std::set<llvm::GlobalVariable*> toZap;
+            std::set<llvm::GlobalVariable *> toZap;
             m_idMap.insert(std::make_pair(&I, m_counter));
             ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
-            for (std::list<llvm::Function*>::iterator cf = callees.begin(), cfe = callees.end(); cf != cfe; ++cf) {
+            for (std::list<llvm::Function *>::iterator cf = callees.begin(), cfe = callees.end(); cf != cfe; ++cf)
+            {
                 llvm::Function *callee = *cf;
-                if (m_scc.find(callee) != m_scc.end() || m_complexityTuples) {
-                    std::list<ref<Polynomial> > callArgs;
-                    for (llvm::CallSite::arg_iterator i = callSite.arg_begin(), e = callSite.arg_end(); i != e; ++i) {
+                if (m_scc.find(callee) != m_scc.end() || m_complexityTuples)
+                {
+                    std::list<ref<Polynomial>> callArgs;
+                    for (llvm::CallSite::arg_iterator i = callSite.arg_begin(), e = callSite.arg_end(); i != e; ++i)
+                    {
                         llvm::Value *arg = *i;
-                        if (arg->getType() != m_boolType && arg->getType()->isIntegerTy()) {
+                        if (arg->getType() != m_boolType && arg->getType()->isIntegerTy())
+                        {
                             callArgs.push_back(getPolynomial(arg));
                         }
                     }
-                    for (std::list<llvm::GlobalVariable*>::iterator i = m_globals.begin(), e = m_globals.end(); i != e; ++i) {
+                    for (std::list<llvm::GlobalVariable *>::iterator i = m_globals.begin(), e = m_globals.end(); i != e; ++i)
+                    {
                         callArgs.push_back(getPolynomial(*i));
                     }
                     m_controlPoints.insert(getEval(callee, "start"));
@@ -1727,52 +1992,63 @@ void Converter::visitCallInst(llvm::CallInst &I)
                     ref<Rule> rule2 = Rule::create(lhs, rhs2, Constraint::_true);
                     m_blockRules.push_back(rule2);
                 }
-                if (callee->isDeclaration()) {
+                if (callee->isDeclaration())
+                {
                     // they don't mess with globals
                     continue;
                 }
-                std::map<llvm::Function*, std::set<llvm::GlobalVariable*> >::iterator it = m_funcMayZap.find(callee);
-                if (it == m_funcMayZap.end()) {
+                std::map<llvm::Function *, std::set<llvm::GlobalVariable *>>::iterator it = m_funcMayZap.find(callee);
+                if (it == m_funcMayZap.end())
+                {
                     std::cerr << "Could not find alias information (" << __FILE__ << ":" << __LINE__ << ")!" << std::endl;
                     exit(767);
                 }
-                std::set<llvm::GlobalVariable*> zapped = it->second;
+                std::set<llvm::GlobalVariable *> zapped = it->second;
                 toZap.insert(zapped.begin(), zapped.end());
             }
             m_counter++;
             // zap!
-            std::list<ref<Polynomial> > newArgs;
-            if (I.getType()->isIntegerTy() && I.getType() != m_boolType) {
+            std::list<ref<Polynomial>> newArgs;
+            if (I.getType()->isIntegerTy() && I.getType() != m_boolType)
+            {
                 ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
 
-                if (m_t2Output) {
+                if (m_t2Output)
+                {
                     //std::cout << (nondef->toString()) << ":= nondet();" << std::endl;
                     std::cout << (getVar(&I)) << " := nondet();" << std::endl;
                 }
-                
+
                 newArgs = getZappedArgs(toZap, I, nondef);
-            } else {
+            }
+            else
+            {
                 newArgs = getZappedArgs(toZap);
             }
             ref<Term> rhs1 = Term::create(getEval(m_counter), newArgs);
             ref<Rule> rule1 = Rule::create(lhs, rhs1, Constraint::_true);
             m_blockRules.push_back(rule1);
             return;
-        } else {
+        }
+        else
+        {
             std::cerr << "Unsupported function return type encountered!" << std::endl;
             exit(1);
         }
     }
 }
 
-std::list<llvm::Function*> Converter::getMatchingFunctions(llvm::CallInst &I)
+std::list<llvm::Function *> Converter::getMatchingFunctions(llvm::CallInst &I)
 {
-    std::list<llvm::Function*> res;
+    std::list<llvm::Function *> res;
     const llvm::Type *type = I.getCalledValue()->getType();
     llvm::Module *module = I.getParent()->getParent()->getParent();
-    for (llvm::Module::iterator i = module->begin(), e = module->end(); i != e; ++i) {
-        if (!i->isDeclaration()) {
-            if (i->getType() == type) {
+    for (llvm::Module::iterator i = module->begin(), e = module->end(); i != e; ++i)
+    {
+        if (!i->isDeclaration())
+        {
+            if (i->getType() == type)
+            {
                 res.push_back(i);
             }
         }
@@ -1786,7 +2062,8 @@ std::string Converter::getNondef(llvm::Value *V)
     tmp << "nondef." << m_nondef;
     m_nondef++;
     std::string res = tmp.str();
-    if (m_boundedIntegers && V != NULL && V->getType()->isIntegerTy()) {
+    if (m_boundedIntegers && V != NULL && V->getType()->isIntegerTy())
+    {
         m_bitwidthMap.insert(std::make_pair(res, llvm::cast<llvm::IntegerType>(V->getType())->getBitWidth()));
     }
     return res;
@@ -1794,16 +2071,21 @@ std::string Converter::getNondef(llvm::Value *V)
 
 void Converter::visitSelectInst(llvm::SelectInst &I)
 {
-    if (I.getType() == m_boolType || !I.getType()->isIntegerTy()) {
+    if (I.getType() == m_boolType || !I.getType()->isIntegerTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
-        if (m_selectIsControl) {
+    }
+    else
+    {
+        if (m_selectIsControl)
+        {
             m_controlPoints.insert(getEval(m_counter));
         }
-        llvm::BasicBlock* pBlock = I.getParent();
+        llvm::BasicBlock *pBlock = I.getParent();
         m_idMap.insert(std::make_pair(&I, m_counter));
         ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
         m_counter++;
@@ -1815,50 +2097,57 @@ void Converter::visitSelectInst(llvm::SelectInst &I)
         ref<Rule> rule2 = Rule::create(lhs, rhs2, c->toNNF(true));
         m_blockRules.push_back(rule2);
 
-        if (m_t2Output) {
+        if (m_t2Output)
+        {
             //Given then we're branching, create an intermediate node to branch through via condition.
-            std::cout << "TO: " << (pBlock->getName().str()) << "_" << (getVar(&I)) << ";" <<std::endl;
-        
+            std::cout << "TO: " << (pBlock->getName().str()) << "_" << (getVar(&I)) << ";" << std::endl;
+
             //Branch to assignment where condition is true.
-            std::cout << "FROM: " << (pBlock->getName().str()) << "_" << (getVar(&I))<< ";" << std::endl;
+            std::cout << "FROM: " << (pBlock->getName().str()) << "_" << (getVar(&I)) << ";" << std::endl;
             std::cout << "assume(" << (c->toT2String()) << ");" << std::endl;
             std::cout << (getVar(&I)) << " := " << (getPolynomial(I.getTrueValue()))->toString() << ";" << std::endl;
-            std::cout << "TO: " << (pBlock->getName().str()) << "_s" << (getVar(&I))<< ";" << std::endl << std::endl;
-        
+            std::cout << "TO: " << (pBlock->getName().str()) << "_s" << (getVar(&I)) << ";" << std::endl
+                      << std::endl;
+
             //Branch to assignment where condition is false.
-            std::cout << "FROM: " << (pBlock->getName().str()) << "_" << (getVar(&I))<< ";" << std::endl;
+            std::cout << "FROM: " << (pBlock->getName().str()) << "_" << (getVar(&I)) << ";" << std::endl;
             std::cout << "assume(" << ((c->toNNF(true))->toT2String()) << ");" << std::endl;
             std::cout << (getVar(&I)) << " := " << (getPolynomial(I.getFalseValue()))->toString() << ";" << std::endl;
-            std::cout << "TO: " << (pBlock->getName().str()) << "_s" << (getVar(&I))<< ";" << std::endl << std::endl;
-        
+            std::cout << "TO: " << (pBlock->getName().str()) << "_s" << (getVar(&I)) << ";" << std::endl
+                      << std::endl;
+
             //Create final intermediate transition to merge back the above branching.
-            std::cout << "FROM: " << (pBlock->getName().str()) << "_s" << (getVar(&I))<< ";" << std::endl;
+            std::cout << "FROM: " << (pBlock->getName().str()) << "_s" << (getVar(&I)) << ";" << std::endl;
         }
     }
 }
 
 void Converter::visitPHINode(llvm::PHINode &I)
 {
-    if (I.getType() == m_boolType || !I.getType()->isIntegerTy()) {
+    if (I.getType() == m_boolType || !I.getType()->isIntegerTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         std::string phiVar = getVar(&I);
         m_vars.push_back(phiVar);
         m_phiVars.insert(phiVar);
         std::string valName;
         unsigned incomeVals = I.getNumIncomingValues();
-        for(unsigned i = 0; i < incomeVals; i++)
+        for (unsigned i = 0; i < incomeVals; i++)
         {
-            llvm::BasicBlock* iBlock = I.getIncomingBlock(i);
-            llvm::Value* iValue = I.getIncomingValueForBlock(iBlock);
-            std::map<llvm::BasicBlock*, std::list<std::pair<std::string,llvm::Value*> > >::iterator it = m_phiMap.find(iBlock);
-            if (it != m_phiMap.end()){
-                it->second.push_back(std::make_pair(phiVar,iValue));
+            llvm::BasicBlock *iBlock = I.getIncomingBlock(i);
+            llvm::Value *iValue = I.getIncomingValueForBlock(iBlock);
+            std::map<llvm::BasicBlock *, std::list<std::pair<std::string, llvm::Value *>>>::iterator it = m_phiMap.find(iBlock);
+            if (it != m_phiMap.end())
+            {
+                it->second.push_back(std::make_pair(phiVar, iValue));
             }
-            else{
-                std::list<std::pair<std::string,llvm::Value*> > valList;
-                valList.push_back(std::make_pair(phiVar,iValue));
+            else
+            {
+                std::list<std::pair<std::string, llvm::Value *>> valList;
+                valList.push_back(std::make_pair(phiVar, iValue));
                 m_phiMap[iBlock] = valList;
             }
         }
@@ -1866,19 +2155,25 @@ void Converter::visitPHINode(llvm::PHINode &I)
 }
 
 void Converter::visitGetElementPtrInst(llvm::GetElementPtrInst &)
-{}
+{
+}
 
 void Converter::visitIntToPtrInst(llvm::IntToPtrInst &)
-{}
+{
+}
 
 void Converter::visitBitCastInst(llvm::BitCastInst &I)
 {
-    if (!I.getType()->isIntegerTy()) {
+    if (!I.getType()->isIntegerTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> value = getPolynomial(&I);
         visitGenericInstruction(I, value);
     }
@@ -1886,9 +2181,12 @@ void Converter::visitBitCastInst(llvm::BitCastInst &I)
 
 void Converter::visitPtrToIntInst(llvm::PtrToIntInst &I)
 {
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         visitGenericInstruction(I, nondef);
     }
@@ -1896,26 +2194,34 @@ void Converter::visitPtrToIntInst(llvm::PtrToIntInst &I)
 
 void Converter::visitLoadInst(llvm::LoadInst &I)
 {
-    if (!I.getType()->isIntegerTy() || I.getType() == m_boolType) {
+    if (!I.getType()->isIntegerTy() || I.getType() == m_boolType)
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         MayMustMap::iterator it = m_mmMap.find(&I);
-        if (it == m_mmMap.end()) {
+        if (it == m_mmMap.end())
+        {
             std::cerr << "Could not find alias information (" << __FILE__ << ":" << __LINE__ << ")!" << std::endl;
             exit(321);
         }
         MayMustPair mmp = it->second;
-        std::set<llvm::GlobalVariable*> mays = mmp.first;
-        std::set<llvm::GlobalVariable*> musts = mmp.second;
+        std::set<llvm::GlobalVariable *> mays = mmp.first;
+        std::set<llvm::GlobalVariable *> musts = mmp.second;
         ref<Polynomial> newArg;
         if (musts.size() == 1 && mays.size() == 0 &&
-            (m_t2Output && I.isSimple())) {
+            (m_t2Output && I.isSimple()))
+        {
             // unique!
             newArg = Polynomial::create(getVar(*musts.begin()));
-        } else {
+        }
+        else
+        {
             // nondef...
             newArg = Polynomial::create(getNondef(&I));
         }
@@ -1924,11 +2230,12 @@ void Converter::visitLoadInst(llvm::LoadInst &I)
         ++m_counter;
         ref<Term> rhs = Term::create(getEval(m_counter), getNewArgs(I, newArg));
         ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
-        if (m_t2Output) {
+        if (m_t2Output)
+        {
             //std::cout << (nondef->toString()) << ":= nondet();" << std::endl;
             //std::cout << (getVar(&I)) << " := nondet();" << std::endl;
             std::cout << (getVar(&I)) << " := "
-                      << newArg->toString() << std::endl;
+                      << newArg->toString() << ";" << std::endl;
         }
         m_blockRules.push_back(rule);
     }
@@ -1936,31 +2243,42 @@ void Converter::visitLoadInst(llvm::LoadInst &I)
 
 void Converter::visitStoreInst(llvm::StoreInst &I)
 {
-    if (m_phase1) {
-    } else if (m_t2Output && I.isSimple()) {
+    if (m_phase1)
+    {
+    }
+    else if (m_t2Output && I.isSimple())
+    {
         llvm::Value *val = I.getValueOperand();
         llvm::Value *ptr = I.getPointerOperand();
         ref<Polynomial> p = getPolynomial(val);
         std::cout << (getVar(ptr)) << " := "
                   << p->toString() << ";" << std::endl;
-    } else {
+    }
+    else
+    {
         llvm::Value *val = I.getOperand(0);
         MayMustMap::iterator it = m_mmMap.find(&I);
-        if (it == m_mmMap.end()) {
+        if (it == m_mmMap.end())
+        {
             std::cerr << "Could not find alias information (" << __FILE__ << ":" << __LINE__ << ")!" << std::endl;
             exit(321);
         }
         MayMustPair mmp = it->second;
-        std::set<llvm::GlobalVariable*> mays = mmp.first;
-        std::set<llvm::GlobalVariable*> musts = mmp.second;
-        std::list<ref<Polynomial> > newArgs;
-        if (musts.size() == 1 && mays.size() == 0) {
+        std::set<llvm::GlobalVariable *> mays = mmp.first;
+        std::set<llvm::GlobalVariable *> musts = mmp.second;
+        std::list<ref<Polynomial>> newArgs;
+        if (musts.size() == 1 && mays.size() == 0)
+        {
             // unique!
             newArgs = getNewArgs(**musts.begin(), getPolynomial(val));
-        } else if (musts.size() != 0) {
+        }
+        else if (musts.size() != 0)
+        {
             std::cerr << "Strange number of must aliases!" << std::endl;
             exit(1212);
-        } else {
+        }
+        else
+        {
             // zap all that may
             newArgs = getZappedArgs(mays);
         }
@@ -1969,7 +2287,8 @@ void Converter::visitStoreInst(llvm::StoreInst &I)
         ++m_counter;
         ref<Term> rhs = Term::create(getEval(m_counter), newArgs);
         ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
-        if (m_t2Output) {
+        if (m_t2Output)
+        {
             //std::cout << (nondef->toString()) << ":= nondet();" << std::endl;
             std::cout << (getVar(&I)) << " := nondet();" << std::endl;
         }
@@ -1979,14 +2298,16 @@ void Converter::visitStoreInst(llvm::StoreInst &I)
 
 void Converter::visitAllocaInst(llvm::AllocaInst &)
 {
-    
 }
 
 void Converter::visitFPToSIInst(llvm::FPToSIInst &I)
 {
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         visitGenericInstruction(I, nondef);
     }
@@ -1994,9 +2315,12 @@ void Converter::visitFPToSIInst(llvm::FPToSIInst &I)
 
 void Converter::visitFPToUIInst(llvm::FPToUIInst &I)
 {
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         visitGenericInstruction(I, nondef);
     }
@@ -2004,13 +2328,16 @@ void Converter::visitFPToUIInst(llvm::FPToUIInst &I)
 
 void Converter::visitInstruction(llvm::Instruction &I)
 {
-    if (I.getType() == m_boolType || !I.getType()->isIntegerTy()) {
+    if (I.getType() == m_boolType || !I.getType()->isIntegerTy())
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-        
-    } else {
+    }
+    else
+    {
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         visitGenericInstruction(I, nondef);
     }
@@ -2018,14 +2345,18 @@ void Converter::visitInstruction(llvm::Instruction &I)
 
 void Converter::visitSExtInst(llvm::SExtInst &I)
 {
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         m_idMap.insert(std::make_pair(&I, m_counter));
         ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
         ref<Polynomial> copy = getPolynomial(I.getOperand(0));
         ++m_counter;
-        if (m_boundedIntegers && m_unsignedEncoding) {
+        if (m_boundedIntegers && m_unsignedEncoding)
+        {
             unsigned int bitwidthNew = llvm::cast<llvm::IntegerType>(I.getType())->getBitWidth();
             unsigned int bitwidthOld = llvm::cast<llvm::IntegerType>(I.getOperand(0)->getType())->getBitWidth();
             ref<Polynomial> sizeNew = Polynomial::power_of_two(bitwidthNew);
@@ -2041,7 +2372,9 @@ void Converter::visitSExtInst(llvm::SExtInst &I)
             ref<Rule> rule2 = Rule::create(lhs, rhs2, c2);
             m_blockRules.push_back(rule1);
             m_blockRules.push_back(rule2);
-        } else {
+        }
+        else
+        {
             // mathematical integers or bounded integers with signed encoding
             ref<Term> rhs = Term::create(getEval(m_counter), getNewArgs(I, copy));
             ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
@@ -2052,16 +2385,21 @@ void Converter::visitSExtInst(llvm::SExtInst &I)
 
 void Converter::visitZExtInst(llvm::ZExtInst &I)
 {
-    if (isAssumeArg(I)) {
+    if (isAssumeArg(I))
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         m_idMap.insert(std::make_pair(&I, m_counter));
         ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
         ++m_counter;
-        if (I.getOperand(0)->getType() == m_boolType) {
+        if (I.getOperand(0)->getType() == m_boolType)
+        {
             ref<Polynomial> zero = Polynomial::null;
             ref<Polynomial> one = Polynomial::one;
             ref<Term> rhszero = Term::create(getEval(m_counter), getNewArgs(I, zero));
@@ -2071,9 +2409,12 @@ void Converter::visitZExtInst(llvm::ZExtInst &I)
             ref<Rule> ruleone = Rule::create(lhs, rhsone, c->toNNF(false));
             m_blockRules.push_back(rulezero);
             m_blockRules.push_back(ruleone);
-        } else {
+        }
+        else
+        {
             ref<Polynomial> copy = getPolynomial(I.getOperand(0));
-            if (m_boundedIntegers && !m_unsignedEncoding) {
+            if (m_boundedIntegers && !m_unsignedEncoding)
+            {
                 unsigned int bitwidthOld = llvm::cast<llvm::IntegerType>(I.getOperand(0)->getType())->getBitWidth();
                 ref<Polynomial> shifter = Polynomial::power_of_two(bitwidthOld);
                 ref<Polynomial> converted = shifter->add(copy);
@@ -2086,7 +2427,9 @@ void Converter::visitZExtInst(llvm::ZExtInst &I)
                 ref<Rule> rule2 = Rule::create(lhs, rhs2, c2);
                 m_blockRules.push_back(rule1);
                 m_blockRules.push_back(rule2);
-            } else {
+            }
+            else
+            {
                 // mathematical integers of bounded integers with unsigned encoding
                 ref<Term> rhs = Term::create(getEval(m_counter), getNewArgs(I, copy));
                 ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
@@ -2098,18 +2441,25 @@ void Converter::visitZExtInst(llvm::ZExtInst &I)
 
 void Converter::visitTruncInst(llvm::TruncInst &I)
 {
-    if (I.getType() == m_boolType) {
+    if (I.getType() == m_boolType)
+    {
         return;
     }
-    if (m_phase1) {
+    if (m_phase1)
+    {
         m_vars.push_back(getVar(&I));
-    } else {
+    }
+    else
+    {
         m_idMap.insert(std::make_pair(&I, m_counter));
         ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
         ref<Polynomial> val;
-        if (m_boundedIntegers) {
+        if (m_boundedIntegers)
+        {
             val = Polynomial::create(getNondef(&I));
-        } else {
+        }
+        else
+        {
             val = getPolynomial(I.getOperand(0));
         }
         m_counter++;
@@ -2121,8 +2471,10 @@ void Converter::visitTruncInst(llvm::TruncInst &I)
 
 bool Converter::isAssumeArg(llvm::ZExtInst &I)
 {
-    if (I.getOperand(0)->getType() == m_boolType) {
-        if (I.getNumUses() != 1) {
+    if (I.getOperand(0)->getType() == m_boolType)
+    {
+        if (I.getNumUses() != 1)
+        {
             return false;
         }
 #if LLVM_VERSION < VERSION(3, 5)
@@ -2130,16 +2482,19 @@ bool Converter::isAssumeArg(llvm::ZExtInst &I)
 #else
         llvm::User *user = *I.user_begin();
 #endif
-        if (!llvm::isa<llvm::CallInst>(user)) {
+        if (!llvm::isa<llvm::CallInst>(user))
+        {
             return false;
         }
         llvm::CallSite callSite(llvm::cast<llvm::CallInst>(user));
         llvm::Function *calledFunction = callSite.getCalledFunction();
-        if (calledFunction == NULL) {
+        if (calledFunction == NULL)
+        {
             return false;
         }
         llvm::StringRef functionName = calledFunction->getName();
-        if (functionName != "__kittel_assume") {
+        if (functionName != "__kittel_assume")
+        {
             return false;
         }
         return true;
