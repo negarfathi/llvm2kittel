@@ -1015,17 +1015,17 @@ void Converter::visitTerminatorInst(llvm::TerminatorInst &I)
                     }
                 }
 
-                for (it2 = (m_phiMap[pBlock]).begin(); it2 != (m_phiMap[pBlock]).end(); it2++)
-                {
+                // for (it2 = (m_phiMap[pBlock]).begin(); it2 != (m_phiMap[pBlock]).end(); it2++)
+                // {
 
-                    std::string varAssign = "var__temp_" + (it2->first);
-                    std::string varOrig = it2->first;
+                //     std::string varAssign = "var__temp_" + (it2->first);
+                //     std::string varOrig = it2->first;
 
-                    if (m_t2Output)
-                    {
-                        std::cout << varOrig << " := " << varAssign << ";" << std::endl;
-                    }
-                }
+                //     if (m_t2Output)
+                //     {
+                //         std::cout << varOrig << " := " << varAssign << ";" << std::endl;
+                //     }
+                // }
             }
 
             if (branch->isUnconditional())
@@ -2128,9 +2128,9 @@ void Converter::visitPHINode(llvm::PHINode &I)
     {
         return;
     }
+    std::string phiVar = getVar(&I);
     if (m_phase1)
     {
-        std::string phiVar = getVar(&I);
         m_vars.push_back(phiVar);
         m_phiVars.insert(phiVar);
         std::string valName;
@@ -2150,6 +2150,15 @@ void Converter::visitPHINode(llvm::PHINode &I)
                 valList.push_back(std::make_pair(phiVar, iValue));
                 m_phiMap[iBlock] = valList;
             }
+        }
+    }
+    else
+    {
+        std::string varAssign = "var__temp_" + phiVar;
+        std::string varOrig = phiVar;
+        if (m_t2Output)
+        {
+            std::cout << varOrig << " := " << varAssign << ";" << std::endl;
         }
     }
 }
