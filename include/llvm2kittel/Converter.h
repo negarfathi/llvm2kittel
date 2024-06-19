@@ -102,6 +102,31 @@ public:
 
     std::set<std::string> getComplexityLHSs();
 
+    //<Negar>
+    bool isEntryBlock = true;
+    bool hasUnreachableBlock = false;
+    std::vector<std::string> newVar;
+    std::vector<std::string> mulInst;
+    struct PhiInst{
+        std::string basicBlock;
+        std::string phiVar;
+        std::string value;
+    };
+    std::vector<PhiInst> phiInst;
+    std::vector<std::string> globalInst;
+    std::vector<std::string> oneDimArr;
+    std::vector<std::string> twoDimArr;
+    std::vector<std::string> twoDimSubArr;
+    struct ArrayInst{
+        std::string variable;
+        std::string array;
+        std::string index;
+    };
+    std::vector<ArrayInst> arrayInst;
+    void visitSIToFPInst(llvm::SIToFPInst &I);
+    void visitBinaryOperator(llvm::BinaryOperator &binaryOp);
+    //</Negar>
+
 private:
     llvm::BasicBlock *m_entryBlock;
     void visitBB(llvm::BasicBlock *bb);
