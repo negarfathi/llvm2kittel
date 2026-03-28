@@ -78,7 +78,10 @@ std::string True::toSMTString(bool)
 
 std::string True::toT2String()
 {
-    return "0 >= 0";
+    //<Negar>
+    //return "0 >= 0";
+    return "0 <= 0";
+    //</Negar>
 }
 
 ref<Constraint> True::instantiate(std::map<std::string, ref<Polynomial> > *)
@@ -167,7 +170,10 @@ std::string False::toSMTString(bool)
 
 std::string False::toT2String()
 {
-    return "1 >= 0";
+    //<Negar>
+    //return "1 >= 0";
+    return "1 <= 0";
+    //</Negar>
 }
 
 ref<Constraint> False::instantiate(std::map<std::string, ref<Polynomial> > *)
@@ -340,7 +346,27 @@ std::string Atom::typeToString(AType type)
         return "<=";
     } else if (type == Lss) {
         return "<";
-    } else {
+    }
+    //<Negar>
+    else if (type == Slt) {
+        return "slt";
+    } else if (type == Ult) {
+        return "ult";
+    } else if (type == Sle) {
+        return "sle";
+    } else if (type == Ule) {
+        return "ule";
+    } else if (type == Sgt) {
+        return "sgt";
+    } else if (type == Ugt) {
+        return "ugt";
+    } else if (type == Sge) {
+        return "sge";
+    } else if (type == Uge) {
+        return "uge";
+    }
+    //</Negar>
+    else {
         return "D'Oh!";
     }
 }
@@ -357,7 +383,27 @@ std::string Atom::typeToKittelString(AType type)
         return "<=";
     } else if (type == Lss) {
         return "<";
-    } else {
+    }
+    //<Negar>
+    else if (type == Slt) {
+        return "slt";
+    } else if (type == Ult) {
+        return "ult";
+    } else if (type == Sle) {
+        return "sle";
+    } else if (type == Ule) {
+        return "ule";
+    } else if (type == Sgt) {
+        return "sgt";
+    } else if (type == Ugt) {
+        return "ugt";
+    } else if (type == Sge) {
+        return "sge";
+    } else if (type == Uge) {
+        return "uge";
+    }
+    //</Negar>
+    else {
         return "D'Oh!";
     }
 }
@@ -374,7 +420,27 @@ std::string Atom::typeToCIntString(AType type)
         return "<=";
     } else if (type == Lss) {
         return "<";
-    } else {
+    }
+    //<Negar>
+    else if (type == Slt) {
+        return "slt";
+    } else if (type == Ult) {
+        return "ult";
+    } else if (type == Sle) {
+        return "sle";
+    } else if (type == Ule) {
+        return "ule";
+    } else if (type == Sgt) {
+        return "sgt";
+    } else if (type == Ugt) {
+        return "ugt";
+    } else if (type == Sge) {
+        return "sge";
+    } else if (type == Uge) {
+        return "uge";
+    }
+    //</Negar>
+    else {
         return "D'Oh!";
     }
 }
@@ -391,7 +457,27 @@ std::string Atom::typeToSMTString(AType type)
         return "<=";
     } else if (type == Lss) {
         return "<";
-    } else {
+    }
+    //<Negar>
+    else if (type == Slt) {
+        return "slt";
+    } else if (type == Ult) {
+        return "ult";
+    } else if (type == Sle) {
+        return "sle";
+    } else if (type == Ule) {
+        return "ule";
+    } else if (type == Sgt) {
+        return "sgt";
+    } else if (type == Ugt) {
+        return "ugt";
+    } else if (type == Sge) {
+        return "sge";
+    } else if (type == Uge) {
+        return "uge";
+    }
+    //</Negar>
+    else {
         return "D'Oh!";
     }
 }
@@ -410,7 +496,27 @@ std::string Atom::typeToT2String(AType type)
         return "<=";
     } else if (type == Lss) {
         return "<";
-    } else {
+    }
+    //<Negar>
+    else if (type == Slt) {
+        return "slt";
+    } else if (type == Ult) {
+        return "ult";
+    } else if (type == Sle) {
+        return "sle";
+    } else if (type == Ule) {
+        return "ule";
+    } else if (type == Sgt) {
+        return "sgt";
+    } else if (type == Ugt) {
+        return "ugt";
+    } else if (type == Sge) {
+        return "sge";
+    } else if (type == Uge) {
+        return "uge";
+    }
+    //</Negar>
+    else {
         return "D'Oh!";
     }
 }
@@ -476,6 +582,25 @@ ref<Constraint> Atom::toNNF(bool negate)
         } else if (m_type == Lss) {
             newType = Geq;
         }
+        //<Negar>
+        else if (m_type == Slt) {
+            newType = Sge;
+        } else if (m_type == Ult) {
+            newType = Uge;
+        } else if (m_type == Sle) {
+            newType = Sgt;
+        } else if (m_type == Ule) {
+            newType = Ugt;
+        } else if (m_type == Sgt) {
+            newType = Sle;
+        } else if (m_type == Ugt) {
+            newType = Ule;
+        } else if (m_type == Sge) {
+            newType = Slt;
+        } else if (m_type == Uge) {
+            newType = Ult;
+        }
+        //</Negar>
     }
     return create(m_lhs, m_rhs, newType);
 }
@@ -495,6 +620,7 @@ void Atom::addAtomicsToList(std::list<ref<Constraint> > &res)
     res.push_back(this);
 }
 
+//<Negar><Negar>
 ref<Constraint> Atom::eliminateNeq()
 {
     if (m_type == Neq) {
@@ -505,6 +631,7 @@ ref<Constraint> Atom::eliminateNeq()
         return this;
     }
 }
+//</Negar></Negar>
 
 ref<Constraint> Atom::evaluateTrivialAtoms()
 {
@@ -533,6 +660,17 @@ ref<Constraint> Atom::evaluateTrivialAtomsInternal(ref<Polynomial> lhs, ref<Poly
         } else if (type == Lss) {
             eval = (mpz_cmp(lconst, rconst) < 0);
         }
+        //<Negar>
+        else if (type == Slt || type == Ult) {
+            eval = (mpz_cmp(lconst, rconst) < 0);
+        } else if (type == Sle || type == Ule) {
+            eval = (mpz_cmp(lconst, rconst) <= 0);
+        } else if (type == Sgt || type == Ugt) {
+            eval = (mpz_cmp(lconst, rconst) > 0);
+        } else if (type == Sge || type == Uge) {
+            eval = (mpz_cmp(lconst, rconst) >= 0);
+        }
+        //</Negar>
         mpz_clear(lconst);
         mpz_clear(rconst);
         if (eval) {

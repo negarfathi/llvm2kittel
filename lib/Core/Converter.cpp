@@ -11,6 +11,10 @@
 #include "llvm2kittel/IntTRS/Term.h"
 #include "llvm2kittel/Util/Version.h"
 
+//<Negar>
+#include <llvm/Support/raw_ostream.h>
+//</Negar>
+
 // llvm includes
 #include "WARN_OFF.h"
 #if LLVM_VERSION < VERSION(3, 3)
@@ -40,7 +44,46 @@
 
 #define SMALL_VECTOR_SIZE 8
 
-Converter::Converter(const llvm::Type *boolType, bool assumeIsControl, bool selectIsControl, bool onlyMultiPredIsControl, bool boundedIntegers, bool unsignedEncoding, bool onlyLoopConditions, DivRemConstraintType divisionConstraintType, bool bitwiseConditions, bool complexityTuples, const bool t2Output)
+//<Negar>
+//Converter::Converter(const llvm::Type *boolType, bool assumeIsControl, bool selectIsControl, bool onlyMultiPredIsControl, bool boundedIntegers, bool unsignedEncoding, bool onlyLoopConditions, DivRemConstraintType divisionConstraintType, bool bitwiseConditions, bool complexityTuples, const bool t2Output)
+//        : m_entryBlock(NULL),
+//          m_boolType(boolType),
+//          m_blockRules(),
+//          m_rules(),
+//          m_vars(),
+//          m_lhs(),
+//          m_counter(0),
+//          m_phase1(true),
+//          m_globals(),
+//          m_mmMap(),
+//          m_funcMayZap(),
+//          m_tfMap(),
+//          m_elcMap(),
+//          m_returns(),
+//          m_idMap(),
+//          m_phiMap(),
+//          m_nondef(0),
+//          m_assumeIsControl(assumeIsControl),
+//          m_selectIsControl(selectIsControl),
+//          m_onlyMultiPredIsControl(onlyMultiPredIsControl),
+//          m_controlPoints(),
+//          m_trivial(false),
+//          m_function(NULL),
+//          m_scc(),
+//          m_phiVars(),
+//          m_boundedIntegers(boundedIntegers),
+//          m_unsignedEncoding(unsignedEncoding),
+//          m_bitwidthMap(),
+//          m_onlyLoopConditions(onlyLoopConditions),
+//          m_loopConditionBlocks(),
+//          m_divisionConstraintType(divisionConstraintType),
+//          m_bitwiseConditions(bitwiseConditions),
+//          m_complexityTuples(complexityTuples),
+//          m_complexityLHSs(),
+//          m_t2Output(t2Output)
+//{
+//}
+Converter::Converter(const llvm::Type *boolType, bool assumeIsControl, bool selectIsControl, bool onlyMultiPredIsControl, bool boundedIntegers, bool unsignedEncoding, bool onlyLoopConditions, DivRemConstraintType divisionConstraintType, bool bitwiseConditions, bool complexityTuples, const bool t2Output, bool signednessInfo, bool nondetTypeInfo, bool unreachableExit)
     : m_entryBlock(NULL),
       m_boolType(boolType),
       m_blockRules(),
@@ -75,9 +118,13 @@ Converter::Converter(const llvm::Type *boolType, bool assumeIsControl, bool sele
       m_bitwiseConditions(bitwiseConditions),
       m_complexityTuples(complexityTuples),
       m_complexityLHSs(),
-      m_t2Output(t2Output)
+      m_t2Output(t2Output),
+      signednessInfo(signednessInfo),
+      nondetTypeInfo(nondetTypeInfo),
+      unreachableExit(unreachableExit)
 {
 }
+//</Negar>
 
 bool Converter::isTrivial(void)
 {
@@ -173,6 +220,104 @@ void Converter::phase1(llvm::Function *function, std::set<llvm::Function *> &scc
             }
         }
     }
+
+    //<Negar>
+    for (llvm::Function &F : *module) {
+        if (F.isDeclaration()) {
+            continue;
+        }
+        for (llvm::BasicBlock &BB : F) {
+            //if (llvm::isa<llvm::UnreachableInst>(BB.getTerminator())) {
+            //    hasUnreachableBlock = true;
+            //}
+            lastBasicBlockName = BB.getName().str();
+            for (llvm::Instruction &I : BB) {
+                if (llvm::PHINode *phiNode = llvm::dyn_cast<llvm::PHINode>(&I)) {
+                    if (phiNode->getType() == m_boolType || !phiNode->getType()->isIntegerTy()) {
+                        std::string variable = phiNode->getName().str();
+                        for (unsigned i = 0; i < phiNode->getNumIncomingValues(); ++i) {
+                            PhiInst phiInst;
+                            phiInst.variable = "v" + variable;
+                            llvm::Value *value = phiNode->getIncomingValue(i);
+                            std::string valueStr;
+                            if (value->hasName()) {
+                                valueStr = "v" + value->getName().str();
+                            }
+                            else {
+                                llvm::raw_string_ostream rso(valueStr);
+                                value->print(rso);
+                                rso.flush();
+                                size_t spacePos = valueStr.find(' ');
+                                valueStr = (valueStr.find(' ') != std::string::npos) ? valueStr.substr(spacePos + 1) : valueStr;
+                            }
+                            phiInst.value = valueStr;
+                            phiInst.basicBlock = phiNode->getIncomingBlock(i)->getName().str();
+                            phiInsts.push_back(phiInst);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (const llvm::GlobalVariable& GV : module->globals()) {
+        std::string varName = GV.getName().str();
+        if (varName.find(".str") == std::string::npos && varName.find("__PRETTY_FUNCTION__.") == std::string::npos) {
+            llvm::Type *varType = GV.getType()->getPointerElementType();
+            if (varType->isArrayTy()) {
+                if (GV.isConstant()) {
+                    // Define an array -> Globally -> One-dimensional -> 2
+                    std::string arrayName = "v" + varName;
+                    globalInsts.push_back(arrayName + " := nondet();");
+                    if (auto *dataArray = llvm::dyn_cast<llvm::ConstantDataArray>(const_cast<llvm::Constant *>(GV.getInitializer()))) {
+                        if (dataArray->isString()) {
+                            std::string dataArrayStr = dataArray->getAsString();
+                            for (unsigned i = 0; i < dataArrayStr.size(); ++i) {
+                                std::string value;
+                                switch (dataArrayStr[i]) {
+                                    case '\n':
+                                        value = "\'\\n\'";
+                                        break;
+                                    case '\0':
+                                        value = "\'\\0\'";
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                globalInsts.push_back(arrayName + " := store_array(" + arrayName + ", " + std::to_string(i) + ", " + value + ");");
+                            }
+                        }
+                    }
+                    if (std::find(oneDimArrs.begin(), oneDimArrs.end(), arrayName) == oneDimArrs.end()) {
+                        oneDimArrs.push_back(arrayName);
+                    }
+                }
+                else {
+                    // Define an array -> Globally -> One-dimensional -> 1
+                    std::string arrayName = "v" + varName;
+                    //if (globalVar.hasInitializer() && llvm::isa<llvm::ConstantAggregateZero>(const_cast<llvm::Constant *>(globalVar.getInitializer()))) {
+                    //    globalInsts.push_back(arrayName + " := const_array(0);");
+                    //}
+                    //else {
+                    globalInsts.push_back("v" + varName + " := nondet();");
+                    //}
+                    if (std::find(oneDimArrs.begin(), oneDimArrs.end(), arrayName) == oneDimArrs.end()) {
+                        oneDimArrs.push_back(arrayName);
+                    }
+                }
+            }
+            else {
+                // Define global variable
+                if (GV.hasInitializer()) {
+                    varName.erase(std::remove(varName.begin(), varName.end(), '\''), varName.end());
+                    llvm::ConstantInt* initOperand = llvm::dyn_cast<llvm::ConstantInt>(const_cast<llvm::Constant *>(GV.getInitializer()));
+                    globalInsts.push_back(varName + " := " + std::to_string(initOperand->getZExtValue()) + ";");
+                }
+            }
+        }
+    }
+    //</Negar>
+
     if (!m_trivial)
     {
         m_phase1 = true;
@@ -588,10 +733,24 @@ ref<Constraint> Converter::getUnsignedComparisonForSignedBounded(llvm::CmpInst::
     case llvm::CmpInst::ICMP_UGT:
     case llvm::CmpInst::ICMP_UGE:
     {
-        ref<Constraint> xge = Atom::create(x, Polynomial::null, Atom::Geq);
-        ref<Constraint> yge = Atom::create(y, Polynomial::null, Atom::Geq);
-        ref<Constraint> xlt = Atom::create(x, Polynomial::null, Atom::Lss);
-        ref<Constraint> ylt = Atom::create(y, Polynomial::null, Atom::Lss);
+        //<Negar>
+        ref<Constraint> xge;
+        ref<Constraint> yge;
+        ref<Constraint> xlt;
+        ref<Constraint> ylt;
+        if (signednessInfo) {
+            xge = Atom::create(x, Polynomial::null, Atom::Uge);
+            yge = Atom::create(y, Polynomial::null, Atom::Uge);
+            xlt = Atom::create(x, Polynomial::null, Atom::Ult);
+            ylt = Atom::create(y, Polynomial::null, Atom::Ult);
+        }
+        else {
+            xge = Atom::create(x, Polynomial::null, Atom::Geq);
+            yge = Atom::create(y, Polynomial::null, Atom::Geq);
+            xlt = Atom::create(x, Polynomial::null, Atom::Lss);
+            ylt = Atom::create(y, Polynomial::null, Atom::Lss);
+        }
+        //</Negar>
         ref<Constraint> gege = Operator::create(xge, yge, Operator::And);
         ref<Constraint> ltlt = Operator::create(xlt, ylt, Operator::And);
         ref<Constraint> ltge = Operator::create(xlt, yge, Operator::And);
@@ -643,10 +802,24 @@ ref<Constraint> Converter::getSignedComparisonForUnsignedBounded(llvm::CmpInst::
     case llvm::CmpInst::ICMP_SGT:
     case llvm::CmpInst::ICMP_SGE:
     {
-        ref<Constraint> xle = Atom::create(x, maxpos, Atom::Leq);
-        ref<Constraint> yle = Atom::create(y, maxpos, Atom::Leq);
-        ref<Constraint> xgt = Atom::create(x, maxpos, Atom::Gtr);
-        ref<Constraint> ygt = Atom::create(y, maxpos, Atom::Gtr);
+        //<Negar>
+        ref<Constraint> xle;
+        ref<Constraint> yle;
+        ref<Constraint> xgt;
+        ref<Constraint> ygt;
+        if (signednessInfo) {
+            xle = Atom::create(x, maxpos, Atom::Sle);
+            yle = Atom::create(y, maxpos, Atom::Sle);
+            xgt = Atom::create(x, maxpos, Atom::Sgt);
+            ygt = Atom::create(y, maxpos, Atom::Sgt);
+        }
+        else {
+            xle = Atom::create(x, maxpos, Atom::Leq);
+            yle = Atom::create(y, maxpos, Atom::Leq);
+            xgt = Atom::create(x, maxpos, Atom::Gtr);
+            ygt = Atom::create(y, maxpos, Atom::Gtr);
+        }
+        //</Negar>
         ref<Constraint> lele = Operator::create(xle, yle, Operator::And);
         ref<Constraint> gtgt = Operator::create(xgt, ygt, Operator::And);
         ref<Constraint> legt = Operator::create(xle, ygt, Operator::And);
@@ -698,18 +871,64 @@ Atom::AType Converter::getAtomType(llvm::CmpInst::Predicate pred)
         return Atom::Equ;
     case llvm::CmpInst::ICMP_NE:
         return Atom::Neq;
-    case llvm::CmpInst::ICMP_SGT:
-    case llvm::CmpInst::ICMP_UGT:
-        return Atom::Gtr;
-    case llvm::CmpInst::ICMP_SGE:
-    case llvm::CmpInst::ICMP_UGE:
-        return Atom::Geq;
+    //<Negar>
     case llvm::CmpInst::ICMP_SLT:
+        if (signednessInfo) {
+            return Atom::Slt;
+        }
+        else {
+            return Atom::Lss;
+        }
     case llvm::CmpInst::ICMP_ULT:
-        return Atom::Lss;
+        if (signednessInfo) {
+            return Atom::Ult;
+        }
+        else {
+            return Atom::Lss;
+        }
     case llvm::CmpInst::ICMP_SLE:
+        if (signednessInfo) {
+            return Atom::Sle;
+        }
+        else {
+            return Atom::Leq;
+        }
     case llvm::CmpInst::ICMP_ULE:
-        return Atom::Leq;
+        if (signednessInfo) {
+            return Atom::Ule;
+        }
+        else {
+            return Atom::Leq;
+        }
+    case llvm::CmpInst::ICMP_SGT:
+        if (signednessInfo) {
+            return Atom::Sgt;
+        }
+        else {
+            return Atom::Gtr;
+        }
+    case llvm::CmpInst::ICMP_UGT:
+        if (signednessInfo) {
+            return Atom::Ugt;
+        }
+        else {
+            return Atom::Gtr;
+        }
+    case llvm::CmpInst::ICMP_SGE:
+        if (signednessInfo) {
+            return Atom::Sge;
+        }
+        else {
+            return Atom::Geq;
+        }
+    case llvm::CmpInst::ICMP_UGE:
+        if (signednessInfo) {
+            return Atom::Uge;
+        }
+        else {
+            return Atom::Geq;
+        }
+    //</Negar>
     case llvm::CmpInst::BAD_ICMP_PREDICATE:
     case llvm::CmpInst::FCMP_FALSE:
     case llvm::CmpInst::FCMP_OEQ:
@@ -778,12 +997,27 @@ void Converter::visitBB(llvm::BasicBlock *bb)
         {
             std::cout << "START: " << (bb->getName().str()) << ";" << std::endl
                       << std::endl;
+
+            //<Negar>
+            //if (hasUnreachableBlock) {
+            //    std::cout << "ERROR: 1;" << std::endl << std::endl;
+            //}
+            //</Negar>
         }
     }
 
     if (!m_phase1 && m_t2Output)
     {
         std::cout << "FROM: " << (bb->getName().str()) << ";" << std::endl;
+
+        //<Negar>
+        if (isEntryBlock == true) {
+            for (const std::string& globalInst : globalInsts) {
+                std::cout << globalInst << std::endl;
+            }
+            isEntryBlock = false;
+        }
+        //</Negar>
     }
 
     // return
@@ -963,9 +1197,26 @@ void Converter::visitTerminatorInst(llvm::TerminatorInst &I)
         }
         else if (llvm::isa<llvm::UnreachableInst>(I))
         {
+            //<Negar>
+            //std::cout << "TO: 1;" << std::endl;
+            if (unreachableExit) {
+                std::cout << "TO: " + lastBasicBlockName + "_ret;" << std::endl;
+            }
+            else {
+                std::cout << "TO: " + I.getParent()->getName().str() + ";" << std::endl;
+            }
+            //</Negar>
         }
         else
         {
+            //<Negar>
+            const std::string &basicBlock = I.getParent()->getName().str();
+            auto myIt = std::find_if(phiInsts.begin(), phiInsts.end(), [&basicBlock](const PhiInst& phiInst) { return phiInst.basicBlock == basicBlock; });
+            if (myIt != phiInsts.end()) {
+                std::cout << "var__temp_" << myIt->variable << " := " << myIt->value << ";" << std::endl;
+            }
+            //</Negar>
+
             int64_t cv;
             std::string valName;
             llvm::BranchInst *branch = llvm::cast<llvm::BranchInst>(&I);
@@ -984,7 +1235,6 @@ void Converter::visitTerminatorInst(llvm::TerminatorInst &I)
                 //or all phi instructions, and then add a set of %var :=var__temp instructions.
                 for (it2 = (m_phiMap[pBlock]).begin(); it2 != (m_phiMap[pBlock]).end(); it2++)
                 {
-
                     std::string varAssign = "var__temp_" + (it2->first);
                     llvm::Value *iValue = it2->second;
                     if (iValue->hasName())
@@ -1044,6 +1294,7 @@ void Converter::visitTerminatorInst(llvm::TerminatorInst &I)
                 //If conditional use condition to transition to block names
                 llvm::Value *branchVal = branch->getCondition();
                 ref<Constraint> c = getConditionFromValue(branchVal);
+
                 unsigned incomeVals = branch->getNumSuccessors();
                 if (incomeVals > 2)
                 {
@@ -1057,18 +1308,48 @@ void Converter::visitTerminatorInst(llvm::TerminatorInst &I)
                     std::cout << "TO: " << (pBlock->getName().str()) << "_end;" << std::endl
                               << std::endl;
 
-                    //Transition where the condition holds
-                    std::cout << "FROM: " << (pBlock->getName().str()) << "_end;" << std::endl;
-                    std::cout << "assume(" << (c->toT2String()) << ");" << std::endl;
-                    llvm::BasicBlock *tBlock = branch->getSuccessor(0);
-                    std::cout << "TO: " << (tBlock->getName().str()) << ";" << std::endl
-                              << std::endl;
+                    //<Negar>
+                    //if (c->toT2String() == "nondet()") {
+                    //    if (llvm::BranchInst *BI = llvm::dyn_cast<llvm::BranchInst>(&I)) {
+                    //        if (BI->isConditional()) {
+                    //            std::string varName = BI->getCondition()->getName().str();
+                    //
+                    //            std::string trueCondition = "v" + varName + " == true";
+                    //            std::string trueBlock = branch->getSuccessor(0)->getName().str();
+                    //            std::cout << "FROM: " << (pBlock->getName().str()) << "_end;" << std::endl;
+                    //            std::cout << "assume(" << trueCondition << ");" << std::endl;
+                    //            std::cout << "TO: " << trueBlock << ";" << std::endl << std::endl;
+                    //
+                    //            std::string falseCondition = "v" + varName + " == false";
+                    //            std::string falseBlock = branch->getSuccessor(1)->getName().str();
+                    //            std::cout << "FROM: " << (pBlock->getName().str()) << "_end;" << std::endl;
+                    //            std::cout << "assume(" << falseCondition << ");" << std::endl;
+                    //            std::cout << "TO: " << falseBlock << ";" << std::endl;
+                    //        }
+                    //    }
+                    //}
+                    //</Negar>
 
-                    //Transition where the condition doesn't hold.
-                    std::cout << "FROM: " << (pBlock->getName().str()) << "_end;" << std::endl;
-                    std::cout << "assume(" << ((c->toNNF(true))->toT2String()) << ");" << std::endl;
-                    llvm::BasicBlock *fBlock = branch->getSuccessor(1);
-                    std::cout << "TO: " << (fBlock->getName().str()) << ";" << std::endl;
+                    //<Negar>
+                    //else {
+                    //</Negar>
+
+                        //Transition where the condition holds
+                        std::cout << "FROM: " << (pBlock->getName().str()) << "_end;" << std::endl;
+                        std::cout << "assume(" << (c->toT2String()) << ");" << std::endl;
+                        llvm::BasicBlock *tBlock = branch->getSuccessor(0);
+                        std::cout << "TO: " << (tBlock->getName().str()) << ";" << std::endl
+                                  << std::endl;
+
+                        //Transition where the condition doesn't hold.
+                        std::cout << "FROM: " << (pBlock->getName().str()) << "_end;" << std::endl;
+                        std::cout << "assume(" << ((c->toNNF(true))->toT2String()) << ");" << std::endl;
+                        llvm::BasicBlock *fBlock = branch->getSuccessor(1);
+                        std::cout << "TO: " << (fBlock->getName().str()) << ";" << std::endl;
+
+                    //<Negar>
+                    //}
+                    //</Negar>
                 }
             }
         }
@@ -1154,6 +1435,10 @@ void Converter::visitMul(llvm::BinaryOperator &I)
         if (m_t2Output)
         {
             std::cout << getVar(&I) << " := " << p1->toString() << " * " << p2->toString() << ";" << std::endl;
+
+            //<Negar>
+            mulInsts.push_back(getVar(&I));
+            //</Negar>
         }
 
         visitGenericInstruction(I, p1->mult(p2));
@@ -1214,16 +1499,32 @@ ref<Constraint> Converter::getSDivConstraintForUnbounded(ref<Polynomial> upper, 
     store.zEQnull = Atom::create(z, null, Atom::Equ);
     store.zEQx = Atom::create(z, x, Atom::Equ);
     store.zEQnegx = Atom::create(z, negx, Atom::Equ);
-    store.yGTRone = Atom::create(y, one, Atom::Gtr);
-    store.xGTRnull = Atom::create(x, null, Atom::Gtr);
-    store.zGEQnull = Atom::create(z, null, Atom::Geq);
-    store.zLSSx = Atom::create(z, x, Atom::Lss);
-    store.xLSSnull = Atom::create(x, null, Atom::Lss);
-    store.zLEQnull = Atom::create(z, null, Atom::Leq);
-    store.zGTRx = Atom::create(z, x, Atom::Gtr);
-    store.yLSSnegone = Atom::create(y, negone, Atom::Lss);
-    store.zGTRnegx = Atom::create(z, negx, Atom::Gtr);
-    store.zLSSnegx = Atom::create(z, negx, Atom::Lss);
+    //<Negar>
+    if (signednessInfo) {
+        store.yGTRone = Atom::create(y, one, Atom::Sgt);
+        store.xGTRnull = Atom::create(x, null, Atom::Sgt);
+        store.zGEQnull = Atom::create(z, null, Atom::Sge);
+        store.zLSSx = Atom::create(z, x, Atom::Slt);
+        store.xLSSnull = Atom::create(x, null, Atom::Slt);
+        store.zLEQnull = Atom::create(z, null, Atom::Sle);
+        store.zGTRx = Atom::create(z, x, Atom::Sgt);
+        store.yLSSnegone = Atom::create(y, negone, Atom::Slt);
+        store.zGTRnegx = Atom::create(z, negx, Atom::Sgt);
+        store.zLSSnegx = Atom::create(z, negx, Atom::Slt);
+    }
+    else {
+        store.yGTRone = Atom::create(y, one, Atom::Gtr);
+        store.xGTRnull = Atom::create(x, null, Atom::Gtr);
+        store.zGEQnull = Atom::create(z, null, Atom::Geq);
+        store.zLSSx = Atom::create(z, x, Atom::Lss);
+        store.xLSSnull = Atom::create(x, null, Atom::Lss);
+        store.zLEQnull = Atom::create(z, null, Atom::Leq);
+        store.zGTRx = Atom::create(z, x, Atom::Gtr);
+        store.yLSSnegone = Atom::create(y, negone, Atom::Lss);
+        store.zGTRnegx = Atom::create(z, negx, Atom::Gtr);
+        store.zLSSnegx = Atom::create(z, negx, Atom::Lss);
+    }
+    //</Negar>
 
     return getSDivConstraint(store);
 }
@@ -1255,21 +1556,67 @@ ref<Constraint> Converter::getSDivConstraintForUnsignedBounded(ref<Polynomial> u
     store.zEQnull = Atom::create(z, null, Atom::Equ);
     store.zEQx = Atom::create(z, x, Atom::Equ);
     store.zEQnegx = Atom::create(z, negx, Atom::Equ);
-    ref<Constraint> yGTRone1 = Atom::create(y, one, Atom::Gtr);
-    ref<Constraint> yGTRone2 = Atom::create(y, maxpos, Atom::Leq);
+    //<Negar>
+    ref<Constraint> yGTRone1;
+    ref<Constraint> yGTRone2;
+    if (signednessInfo) {
+        yGTRone1 = Atom::create(y, one, Atom::Sgt);
+        yGTRone2 = Atom::create(y, maxpos, Atom::Sle);
+    }
+    else {
+        yGTRone1 = Atom::create(y, one, Atom::Gtr);
+        yGTRone2 = Atom::create(y, maxpos, Atom::Leq);
+    }
+    //</Negar>
     store.yGTRone = Operator::create(yGTRone1, yGTRone2, Operator::And);
-    ref<Constraint> xGTRnull1 = Atom::create(x, null, Atom::Gtr);
-    ref<Constraint> xGTRnull2 = Atom::create(x, maxpos, Atom::Leq);
+    //<Negar>
+    ref<Constraint> xGTRnull1;
+    ref<Constraint> xGTRnull2;
+    if (signednessInfo) {
+        xGTRnull1 = Atom::create(x, null, Atom::Sgt);
+        xGTRnull2 = Atom::create(x, maxpos, Atom::Sle);
+    }
+    else {
+        xGTRnull1 = Atom::create(x, null, Atom::Gtr);
+        xGTRnull2 = Atom::create(x, maxpos, Atom::Leq);
+    }
+    //</Negar>
     store.xGTRnull = Operator::create(xGTRnull1, xGTRnull2, Operator::And);
-    store.zGEQnull = Atom::create(z, maxpos, Atom::Leq);
+    //<Negar>
+    if (signednessInfo) {
+        store.zGEQnull = Atom::create(z, maxpos, Atom::Sle);
+    }
+    else {
+        store.zGEQnull = Atom::create(z, maxpos, Atom::Leq);
+    }
+    //</Negar>
     store.zLSSx = getSignedComparisonForUnsignedBounded(llvm::CmpInst::ICMP_SLT, z, x, bitwidth);
-    store.xLSSnull = Atom::create(x, minneg, Atom::Geq);
-    ref<Constraint> zLEQnull1 = Atom::create(z, minneg, Atom::Geq);
+    //<Negar>
+    ref<Constraint> zLEQnull1;
+    if (signednessInfo) {
+        store.xLSSnull = Atom::create(x, minneg, Atom::Sge);
+        zLEQnull1 = Atom::create(z, minneg, Atom::Sge);
+    }
+    else {
+        store.xLSSnull = Atom::create(x, minneg, Atom::Geq);
+        zLEQnull1 = Atom::create(z, minneg, Atom::Geq);
+    }
+    //</Negar>
     ref<Constraint> zLEQnull2 = Atom::create(z, null, Atom::Equ);
     store.zLEQnull = Operator::create(zLEQnull1, zLEQnull2, Operator::Or);
     store.zGTRx = getSignedComparisonForUnsignedBounded(llvm::CmpInst::ICMP_SGT, z, x, bitwidth);
-    ref<Constraint> yLSSnegone1 = Atom::create(y, minneg, Atom::Geq);
-    ref<Constraint> yLSSnegone2 = Atom::create(y, negone, Atom::Lss);
+    //<Negar>
+    ref<Constraint> yLSSnegone1;
+    ref<Constraint> yLSSnegone2;
+    if (signednessInfo) {
+        yLSSnegone1 = Atom::create(y, minneg, Atom::Sge);
+        yLSSnegone2 = Atom::create(y, negone, Atom::Slt);
+    }
+    else {
+        yLSSnegone1 = Atom::create(y, minneg, Atom::Geq);
+        yLSSnegone2 = Atom::create(y, negone, Atom::Lss);
+    }
+    //</Negar>
     store.yLSSnegone = Operator::create(yLSSnegone1, yLSSnegone2, Operator::And);
     store.zGTRnegx = getSignedComparisonForUnsignedBounded(llvm::CmpInst::ICMP_SGT, z, negx, bitwidth);
     store.zLSSnegx = getSignedComparisonForUnsignedBounded(llvm::CmpInst::ICMP_SLT, z, negx, bitwidth);
@@ -1291,35 +1638,95 @@ ref<Constraint> Converter::getExactSDivConstraintForUnbounded(ref<Polynomial> up
     ref<Constraint> pznull = Atom::create(pz, pnull, Atom::Equ);
     ref<Constraint> case1 = Operator::create(pxnull, pznull, Operator::And);
     // 2. y > 0 /\ x > 0 /\ z >= 0 /\ x - y*z >= 0 /\ x - y*z < y
-    ref<Constraint> pygtrnull = Atom::create(py, pnull, Atom::Gtr);
-    ref<Constraint> pxgtrnull = Atom::create(px, pnull, Atom::Gtr);
-    ref<Constraint> pzgeqnull = Atom::create(pz, pnull, Atom::Geq);
+    //<Negar>
+    ref<Constraint> pygtrnull;
+    ref<Constraint> pxgtrnull;
+    ref<Constraint> pzgeqnull;
+    if (signednessInfo) {
+        pygtrnull = Atom::create(py, pnull, Atom::Sgt);
+        pxgtrnull = Atom::create(px, pnull, Atom::Sgt);
+        pzgeqnull = Atom::create(pz, pnull, Atom::Sge);
+    }
+    else {
+        pygtrnull = Atom::create(py, pnull, Atom::Gtr);
+        pxgtrnull = Atom::create(px, pnull, Atom::Gtr);
+        pzgeqnull = Atom::create(pz, pnull, Atom::Geq);
+    }
+    //</Negar>
     ref<Polynomial> term2 = px->sub(py->mult(pz));
-    ref<Constraint> term2geqnull = Atom::create(term2, pnull, Atom::Geq);
-    ref<Constraint> term2lssy = Atom::create(term2, py, Atom::Lss);
+    //<Negar>
+    ref<Constraint> term2geqnull;
+    ref<Constraint> term2lssy;
+    if (signednessInfo) {
+        term2geqnull = Atom::create(term2, pnull, Atom::Sge);
+        term2lssy = Atom::create(term2, py, Atom::Slt);
+    }
+    else {
+        term2geqnull = Atom::create(term2, pnull, Atom::Geq);
+        term2lssy = Atom::create(term2, py, Atom::Lss);
+    }
+    //</Negar>
     ref<Constraint> case21 = Operator::create(pygtrnull, pxgtrnull, Operator::And);
     ref<Constraint> case22 = Operator::create(case21, pzgeqnull, Operator::And);
     ref<Constraint> case23 = Operator::create(case22, term2geqnull, Operator::And);
     ref<Constraint> case2 = Operator::create(case23, term2lssy, Operator::And);
     // 3. y < 0 /\ x > 0 /\ z <= 0 /\ x - y*z >= 0 /\ x - y*z < -y
-    ref<Constraint> pylssnull = Atom::create(py, pnull, Atom::Lss);
-    ref<Constraint> pzleqnull = Atom::create(pz, pnull, Atom::Leq);
-    ref<Constraint> term2lssnegy = Atom::create(term2, pnegy, Atom::Lss);
+    //<Negar>
+    ref<Constraint> pylssnull;
+    ref<Constraint> pzleqnull;
+    ref<Constraint> term2lssnegy;
+    if (signednessInfo) {
+        pylssnull = Atom::create(py, pnull, Atom::Slt);
+        pzleqnull = Atom::create(pz, pnull, Atom::Sle);
+        term2lssnegy = Atom::create(term2, pnegy, Atom::Slt);
+    }
+    else {
+        pylssnull = Atom::create(py, pnull, Atom::Lss);
+        pzleqnull = Atom::create(pz, pnull, Atom::Leq);
+        term2lssnegy = Atom::create(term2, pnegy, Atom::Lss);
+    }
+    //</Negar>
     ref<Constraint> case31 = Operator::create(pylssnull, pxgtrnull, Operator::And);
     ref<Constraint> case32 = Operator::create(case31, pzleqnull, Operator::And);
     ref<Constraint> case33 = Operator::create(case32, term2geqnull, Operator::And);
     ref<Constraint> case3 = Operator::create(case33, term2lssnegy, Operator::And);
     // 4. y > 0 /\ x < 0 /\ z <= 0 /\ -x + y*z >= 0 /\ -x + y*z < y
-    ref<Constraint> pxlssnull = Atom::create(px, pnull, Atom::Lss);
+    //<Negar>
+    ref<Constraint> pxlssnull;
+    if (signednessInfo) {
+        pxlssnull = Atom::create(px, pnull, Atom::Slt);
+    }
+    else {
+        pxlssnull = Atom::create(px, pnull, Atom::Lss);
+    }
+    //</Negar>
     ref<Polynomial> term4 = pnegx->add(py->mult(pz));
-    ref<Constraint> term4geqnull = Atom::create(term4, pnull, Atom::Geq);
-    ref<Constraint> term4lssy = Atom::create(term4, py, Atom::Lss);
+    //<Negar>
+    ref<Constraint> term4geqnull;
+    ref<Constraint> term4lssy;
+    if (signednessInfo) {
+        term4geqnull = Atom::create(term4, pnull, Atom::Sge);
+        term4lssy = Atom::create(term4, py, Atom::Slt);
+    }
+    else {
+        term4geqnull = Atom::create(term4, pnull, Atom::Geq);
+        term4lssy = Atom::create(term4, py, Atom::Lss);
+    }
+    //</Negar>
     ref<Constraint> case41 = Operator::create(pygtrnull, pxlssnull, Operator::And);
     ref<Constraint> case42 = Operator::create(case41, pzleqnull, Operator::And);
     ref<Constraint> case43 = Operator::create(case42, term4geqnull, Operator::And);
     ref<Constraint> case4 = Operator::create(case43, term4lssy, Operator::And);
     // 5. y < 0 /\ x < 0 /\ z >= 0 /\ -x + y*z >= 0 /\ -x + y*z < -y
-    ref<Constraint> term4lssnegy = Atom::create(term4, pnegy, Atom::Lss);
+    //<Negar>
+    ref<Constraint> term4lssnegy;
+    if (signednessInfo) {
+        term4lssnegy = Atom::create(term4, pnegy, Atom::Slt);
+    }
+    else {
+        term4lssnegy = Atom::create(term4, pnegy, Atom::Lss);
+    }
+    //</Negar>
     ref<Constraint> case51 = Operator::create(pylssnull, pxlssnull, Operator::And);
     ref<Constraint> case52 = Operator::create(case51, pzgeqnull, Operator::And);
     ref<Constraint> case53 = Operator::create(case52, term4geqnull, Operator::And);
@@ -1366,7 +1773,14 @@ void Converter::visitSDiv(llvm::BinaryOperator &I)
         }
         if (m_t2Output)
         {
-            std::cout << getVar(&I) << " := " << upper->toString() << " / " << lower->toString() << ";" << std::endl;
+            //<Negar>
+            if (signednessInfo) {
+                std::cout << getVar(&I) << " := " << upper->toString() << " sdiv " << lower->toString() << ";" << std::endl;
+            }
+            else {
+                std::cout << getVar(&I) << " := " << upper->toString() << " / " << lower->toString() << ";" << std::endl;
+            }
+            //</Negar>
         }
         visitGenericInstruction(I, nondef, divC);
     }
@@ -1407,11 +1821,31 @@ ref<Constraint> Converter::getUDivConstraintForSignedBounded(ref<Polynomial> upp
     store.yEQone = Atom::create(y, one, Atom::Equ);
     store.zEQnull = Atom::create(z, null, Atom::Equ);
     store.zEQx = Atom::create(z, x, Atom::Equ);
-    ref<Constraint> yGTRone1 = Atom::create(y, one, Atom::Gtr);
-    ref<Constraint> yGTRone2 = Atom::create(y, null, Atom::Lss);
+    //<Negar>
+    ref<Constraint> yGTRone1;
+    ref<Constraint> yGTRone2;
+    if (signednessInfo) {
+        yGTRone1 = Atom::create(y, one, Atom::Ugt);
+        yGTRone2 = Atom::create(y, null, Atom::Ult);
+    }
+    else {
+        yGTRone1 = Atom::create(y, one, Atom::Gtr);
+        yGTRone2 = Atom::create(y, null, Atom::Lss);
+    }
+    //</Negar>
     store.yGTRone = Operator::create(yGTRone1, yGTRone2, Operator::Or);
-    ref<Constraint> xGTRnull1 = Atom::create(x, null, Atom::Gtr);
-    ref<Constraint> xGTRnull2 = Atom::create(x, null, Atom::Lss);
+    //<Negar>
+    ref<Constraint> xGTRnull1;
+    ref<Constraint> xGTRnull2;
+    if (signednessInfo) {
+        xGTRnull1 = Atom::create(x, null, Atom::Ugt);
+        xGTRnull2 = Atom::create(x, null, Atom::Ult);
+    }
+    else {
+        xGTRnull1 = Atom::create(x, null, Atom::Gtr);
+        xGTRnull2 = Atom::create(x, null, Atom::Lss);
+    }
+    //</Negar>
     store.xGTRnull = Operator::create(xGTRnull1, xGTRnull2, Operator::Or);
     store.zLSSx = getUnsignedComparisonForSignedBounded(llvm::CmpInst::ICMP_ULT, z, x);
 
@@ -1433,9 +1867,18 @@ ref<Constraint> Converter::getUDivConstraintForUnsignedBounded(ref<Polynomial> u
     store.yEQone = Atom::create(y, one, Atom::Equ);
     store.zEQnull = Atom::create(z, null, Atom::Equ);
     store.zEQx = Atom::create(z, x, Atom::Equ);
-    store.yGTRone = Atom::create(y, one, Atom::Gtr);
-    store.xGTRnull = Atom::create(x, null, Atom::Gtr);
-    store.zLSSx = Atom::create(z, x, Atom::Lss);
+    //<Negar>
+    if (signednessInfo) {
+        store.yGTRone = Atom::create(y, one, Atom::Ugt);
+        store.xGTRnull = Atom::create(x, null, Atom::Ugt);
+        store.zLSSx = Atom::create(z, x, Atom::Ult);
+    }
+    else {
+        store.yGTRone = Atom::create(y, one, Atom::Gtr);
+        store.xGTRnull = Atom::create(x, null, Atom::Gtr);
+        store.zLSSx = Atom::create(z, x, Atom::Lss);
+    }
+    //</Negar>
 
     return getUDivConstraint(store);
 }
@@ -1478,7 +1921,14 @@ void Converter::visitUDiv(llvm::BinaryOperator &I)
         }
         if (m_t2Output)
         {
-            std::cout << getVar(&I) << " := " << upper->toString() << " / " << lower->toString() << ";" << std::endl;
+            //<Negar>
+            if (signednessInfo) {
+                std::cout << getVar(&I) << " := " << upper->toString() << " udiv " << lower->toString() << ";" << std::endl;
+            }
+            else {
+                std::cout << getVar(&I) << " := " << upper->toString() << " / " << lower->toString() << ";" << std::endl;
+            }
+            //</Negar>
         }
         visitGenericInstruction(I, nondef, divC);
     }
@@ -1536,16 +1986,32 @@ ref<Constraint> Converter::getSRemConstraintForUnbounded(ref<Polynomial> upper, 
     store.zEQnull = Atom::create(z, null, Atom::Equ);
     store.yEQone = Atom::create(y, one, Atom::Equ);
     store.yEQnegone = Atom::create(y, negone, Atom::Equ);
-    store.yGTRone = Atom::create(y, one, Atom::Gtr);
-    store.xGTRnull = Atom::create(x, null, Atom::Gtr);
-    store.zGEQnull = Atom::create(z, null, Atom::Geq);
-    store.zLSSy = Atom::create(z, y, Atom::Lss);
-    store.xLSSnull = Atom::create(x, null, Atom::Lss);
-    store.zLEQnull = Atom::create(z, null, Atom::Leq);
-    store.zGTRnegy = Atom::create(z, negy, Atom::Gtr);
-    store.yLSSnegone = Atom::create(y, negone, Atom::Lss);
-    store.zLSSnegy = Atom::create(z, negy, Atom::Lss);
-    store.zGTRy = Atom::create(z, y, Atom::Gtr);
+    //<Negar>
+    if (signednessInfo) {
+        store.yGTRone = Atom::create(y, one, Atom::Sgt);
+        store.xGTRnull = Atom::create(x, null, Atom::Sgt);
+        store.zGEQnull = Atom::create(z, null, Atom::Sge);
+        store.zLSSy = Atom::create(z, y, Atom::Slt);
+        store.xLSSnull = Atom::create(x, null, Atom::Slt);
+        store.zLEQnull = Atom::create(z, null, Atom::Sle);
+        store.zGTRnegy = Atom::create(z, negy, Atom::Sgt);
+        store.yLSSnegone = Atom::create(y, negone, Atom::Slt);
+        store.zLSSnegy = Atom::create(z, negy, Atom::Slt);
+        store.zGTRy = Atom::create(z, y, Atom::Sgt);
+    }
+    else {
+        store.yGTRone = Atom::create(y, one, Atom::Gtr);
+        store.xGTRnull = Atom::create(x, null, Atom::Gtr);
+        store.zGEQnull = Atom::create(z, null, Atom::Geq);
+        store.zLSSy = Atom::create(z, y, Atom::Lss);
+        store.xLSSnull = Atom::create(x, null, Atom::Lss);
+        store.zLEQnull = Atom::create(z, null, Atom::Leq);
+        store.zGTRnegy = Atom::create(z, negy, Atom::Gtr);
+        store.yLSSnegone = Atom::create(y, negone, Atom::Lss);
+        store.zLSSnegy = Atom::create(z, negy, Atom::Lss);
+        store.zGTRy = Atom::create(z, y, Atom::Gtr);
+    }
+    //</Negar>
 
     return getSRemConstraint(store);
 }
@@ -1575,21 +2041,67 @@ ref<Constraint> Converter::getSRemConstraintForUnsignedBounded(ref<Polynomial> u
     store.zEQnull = Atom::create(z, null, Atom::Equ);
     store.yEQone = Atom::create(y, one, Atom::Equ);
     store.yEQnegone = Atom::create(y, negone, Atom::Equ);
-    ref<Constraint> yGTRone1 = Atom::create(y, one, Atom::Gtr);
-    ref<Constraint> yGTRone2 = Atom::create(y, maxpos, Atom::Leq);
+    //<Negar>
+    ref<Constraint> yGTRone1;
+    ref<Constraint> yGTRone2;
+    if (signednessInfo) {
+        yGTRone1 = Atom::create(y, one, Atom::Sgt);
+        yGTRone2 = Atom::create(y, maxpos, Atom::Sle);
+    }
+    else {
+        yGTRone1 = Atom::create(y, one, Atom::Gtr);
+        yGTRone2 = Atom::create(y, maxpos, Atom::Leq);
+    }
+    //</Negar>
     store.yGTRone = Operator::create(yGTRone1, yGTRone2, Operator::And);
-    ref<Constraint> xGTRnull1 = Atom::create(x, null, Atom::Gtr);
-    ref<Constraint> xGTRnull2 = Atom::create(x, maxpos, Atom::Leq);
+    //<Negar>
+    ref<Constraint> xGTRnull1;
+    ref<Constraint> xGTRnull2;
+    if (signednessInfo) {
+        xGTRnull1 = Atom::create(x, null, Atom::Sgt);
+        xGTRnull2 = Atom::create(x, maxpos, Atom::Sle);
+    }
+    else {
+        xGTRnull1 = Atom::create(x, null, Atom::Gtr);
+        xGTRnull2 = Atom::create(x, maxpos, Atom::Leq);
+    }
+    //</Negar>
     store.xGTRnull = Operator::create(xGTRnull1, xGTRnull2, Operator::And);
-    store.zGEQnull = Atom::create(z, maxpos, Atom::Leq);
+    //<Negar>
+    if (signednessInfo) {
+        store.zGEQnull = Atom::create(z, maxpos, Atom::Sle);
+    }
+    else {
+        store.zGEQnull = Atom::create(z, maxpos, Atom::Leq);
+    }
+    //</Negar>
     store.zLSSy = getSignedComparisonForUnsignedBounded(llvm::CmpInst::ICMP_SLT, z, y, bitwidth);
-    store.xLSSnull = Atom::create(x, minneg, Atom::Geq);
-    ref<Constraint> zLEQnull1 = Atom::create(z, minneg, Atom::Geq);
+    //<Negar>
+    ref<Constraint> zLEQnull1;
+    if (signednessInfo) {
+        store.xLSSnull = Atom::create(x, minneg, Atom::Sge);
+        zLEQnull1 = Atom::create(z, minneg, Atom::Sge);
+    }
+    else {
+        store.xLSSnull = Atom::create(x, minneg, Atom::Geq);
+        zLEQnull1 = Atom::create(z, minneg, Atom::Geq);
+    }
+    //</Negar>
     ref<Constraint> zLEQnull2 = Atom::create(z, null, Atom::Equ);
     store.zLEQnull = Operator::create(zLEQnull1, zLEQnull2, Operator::Or);
     store.zGTRnegy = getSignedComparisonForUnsignedBounded(llvm::CmpInst::ICMP_SGT, z, negy, bitwidth);
-    ref<Constraint> yLSSnegone1 = Atom::create(y, minneg, Atom::Geq);
-    ref<Constraint> yLSSnegone2 = Atom::create(y, negone, Atom::Lss);
+    //<Negar>
+    ref<Constraint> yLSSnegone1;
+    ref<Constraint> yLSSnegone2;
+    if (signednessInfo) {
+        yLSSnegone1 = Atom::create(y, minneg, Atom::Sge);
+        yLSSnegone2 = Atom::create(y, negone, Atom::Slt);
+    }
+    else {
+        yLSSnegone1 = Atom::create(y, minneg, Atom::Geq);
+        yLSSnegone2 = Atom::create(y, negone, Atom::Lss);
+    }
+    //</Negar>
     store.yLSSnegone = Operator::create(yLSSnegone1, yLSSnegone2, Operator::And);
     store.zLSSnegy = getSignedComparisonForUnsignedBounded(llvm::CmpInst::ICMP_SLT, z, negy, bitwidth);
     store.zGTRy = getSignedComparisonForUnsignedBounded(llvm::CmpInst::ICMP_SGT, z, y, bitwidth);
@@ -1632,7 +2144,14 @@ void Converter::visitSRem(llvm::BinaryOperator &I)
         }
         if (m_t2Output)
         {
-            std::cout << getVar(&I) << " := " << upper->toString() << " % " << lower->toString() << ";" << std::endl;
+            //<Negar>
+            if (signednessInfo) {
+                std::cout << getVar(&I) << " := " << upper->toString() << " srem " << lower->toString() << ";" << std::endl;
+            }
+            else {
+                std::cout << getVar(&I) << " := " << upper->toString() << " % " << lower->toString() << ";" << std::endl;
+            }
+            //</Negar>
         }
         visitGenericInstruction(I, nondef, remC);
     }
@@ -1672,11 +2191,31 @@ ref<Constraint> Converter::getURemConstraintForSignedBounded(ref<Polynomial> upp
     store.xEQnull = Atom::create(x, null, Atom::Equ);
     store.zEQnull = Atom::create(z, null, Atom::Equ);
     store.yEQone = Atom::create(y, one, Atom::Equ);
-    ref<Constraint> yGTRone1 = Atom::create(y, one, Atom::Gtr);
-    ref<Constraint> yGTRone2 = Atom::create(y, null, Atom::Lss);
+    //<Negar>
+    ref<Constraint> yGTRone1;
+    ref<Constraint> yGTRone2;
+    if (signednessInfo) {
+        yGTRone1 = Atom::create(y, one, Atom::Ugt);
+        yGTRone2 = Atom::create(y, null, Atom::Ult);
+    }
+    else {
+        yGTRone1 = Atom::create(y, one, Atom::Gtr);
+        yGTRone2 = Atom::create(y, null, Atom::Lss);
+    }
+    //</Negar>
     store.yGTRone = Operator::create(yGTRone1, yGTRone2, Operator::Or);
-    ref<Constraint> xGTRnull1 = Atom::create(x, null, Atom::Gtr);
-    ref<Constraint> xGTRnull2 = Atom::create(x, null, Atom::Lss);
+    //<Negar>
+    ref<Constraint> xGTRnull1;
+    ref<Constraint> xGTRnull2;
+    if (signednessInfo) {
+        xGTRnull1 = Atom::create(x, null, Atom::Ugt);
+        xGTRnull2 = Atom::create(x, null, Atom::Ult);
+    }
+    else {
+        xGTRnull1 = Atom::create(x, null, Atom::Gtr);
+        xGTRnull2 = Atom::create(x, null, Atom::Lss);
+    }
+    //</Negar>
     store.xGTRnull = Operator::create(xGTRnull1, xGTRnull2, Operator::Or);
     store.zLSSy = getUnsignedComparisonForSignedBounded(llvm::CmpInst::ICMP_ULT, z, y);
 
@@ -1697,9 +2236,18 @@ ref<Constraint> Converter::getURemConstraintForUnsignedBounded(ref<Polynomial> u
     store.xEQnull = Atom::create(x, null, Atom::Equ);
     store.zEQnull = Atom::create(z, null, Atom::Equ);
     store.yEQone = Atom::create(y, one, Atom::Equ);
-    store.yGTRone = Atom::create(y, one, Atom::Gtr);
-    store.xGTRnull = Atom::create(x, null, Atom::Gtr);
-    store.zLSSy = Atom::create(z, y, Atom::Lss);
+    //<Negar>
+    if (signednessInfo) {
+        store.yGTRone = Atom::create(y, one, Atom::Ugt);
+        store.xGTRnull = Atom::create(x, null, Atom::Ugt);
+        store.zLSSy = Atom::create(z, y, Atom::Ult);
+    }
+    else {
+        store.yGTRone = Atom::create(y, one, Atom::Gtr);
+        store.xGTRnull = Atom::create(x, null, Atom::Gtr);
+        store.zLSSy = Atom::create(z, y, Atom::Lss);
+    }
+    //</Negar>
 
     return getURemConstraint(store);
 }
@@ -1737,7 +2285,14 @@ void Converter::visitURem(llvm::BinaryOperator &I)
         }
         if (m_t2Output)
         {
-            std::cout << getVar(&I) << " := " << upper->toString() << " % " << lower->toString() << ";" << std::endl;
+            //<Negar>
+            if (signednessInfo) {
+                std::cout << getVar(&I) << " := " << upper->toString() << " urem " << lower->toString() << ";" << std::endl;
+            }
+            else {
+                std::cout << getVar(&I) << " := " << upper->toString() << " % " << lower->toString() << ";" << std::endl;
+            }
+            //</Negar>
         }
         visitGenericInstruction(I, nondef, remC);
     }
@@ -1745,19 +2300,47 @@ void Converter::visitURem(llvm::BinaryOperator &I)
 
 ref<Constraint> Converter::getAndConstraintForBounded(ref<Polynomial> x, ref<Polynomial> y, ref<Polynomial> res)
 {
-    ref<Constraint> resLEQx = Atom::create(res, x, Atom::Leq);
-    ref<Constraint> resLEQy = Atom::create(res, y, Atom::Leq);
+    //<Negar>
+    ref<Constraint> resLEQx;
+    ref<Constraint> resLEQy;
+    if (signednessInfo) {
+        resLEQx = m_unsignedEncoding ? Atom::create(res, x, Atom::Ule) : Atom::create(res, x, Atom::Sle);
+        resLEQy = m_unsignedEncoding ? Atom::create(res, y, Atom::Ule) : Atom::create(res, y, Atom::Sle);
+    }
+    else {
+        resLEQx = Atom::create(res, x, Atom::Leq);
+        resLEQy = Atom::create(res, y, Atom::Leq);
+    }
+    //</Negar>
     if (m_unsignedEncoding)
     {
         return Operator::create(resLEQx, resLEQy, Operator::And);
     }
     ref<Polynomial> null = Polynomial::null;
-    ref<Constraint> xGEQnull = Atom::create(x, null, Atom::Geq);
-    ref<Constraint> yGEQnull = Atom::create(y, null, Atom::Geq);
-    ref<Constraint> resGEQnull = Atom::create(res, null, Atom::Geq);
-    ref<Constraint> xLSSnull = Atom::create(x, null, Atom::Lss);
-    ref<Constraint> yLSSnull = Atom::create(y, null, Atom::Lss);
-    ref<Constraint> resLSSnull = Atom::create(res, null, Atom::Lss);
+    //<Negar>
+    ref<Constraint> xGEQnull;
+    ref<Constraint> yGEQnull;
+    ref<Constraint> resGEQnull;
+    ref<Constraint> xLSSnull;
+    ref<Constraint> yLSSnull;
+    ref<Constraint> resLSSnull;
+    if (signednessInfo) {
+        xGEQnull = Atom::create(x, null, Atom::Sge);
+        yGEQnull = Atom::create(y, null, Atom::Sge);
+        resGEQnull = Atom::create(res, null, Atom::Sge);
+        xLSSnull = Atom::create(x, null, Atom::Slt);
+        yLSSnull = Atom::create(y, null, Atom::Slt);
+        resLSSnull = Atom::create(res, null, Atom::Slt);
+    }
+    else {
+        xGEQnull = Atom::create(x, null, Atom::Geq);
+        yGEQnull = Atom::create(y, null, Atom::Geq);
+        resGEQnull = Atom::create(res, null, Atom::Geq);
+        xLSSnull = Atom::create(x, null, Atom::Lss);
+        yLSSnull = Atom::create(y, null, Atom::Lss);
+        resLSSnull = Atom::create(res, null, Atom::Lss);
+    }
+    //</Negar>
     // case 1: x >= 0 /\ y >= 0 /\ res >= 0 /\ res <= x /\ res <= y
     ref<Constraint> case1 = Operator::create(xGEQnull, yGEQnull, Operator::And);
     case1 = Operator::create(case1, resGEQnull, Operator::And);
@@ -1808,25 +2391,74 @@ void Converter::visitAnd(llvm::BinaryOperator &I)
         {
             ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
             visitGenericInstruction(I, nondef);
+
+            //<Negar>
+            std::string varName = I.getName().str();
+            llvm::Value *firstOperand = I.getOperand(0);
+            std::string firstOperandStr;
+            if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(firstOperand)) {
+                firstOperandStr = std::to_string(constInt->getSExtValue());
+            }
+            else {
+                firstOperandStr = "v" + firstOperand->getName().str();
+            }
+            llvm::Value *secondOperand = I.getOperand(1);
+            std::string secondOperandStr;
+            if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(secondOperand)) {
+                secondOperandStr = std::to_string(constInt->getSExtValue());
+            }
+            else {
+                secondOperandStr = "v" + secondOperand->getName().str();
+            }
+            std::cout << "v" << varName << " := and(" << firstOperandStr << ", " << secondOperandStr << ");" << std::endl;
+            //</Negar>
         }
     }
 }
 
 ref<Constraint> Converter::getOrConstraintForBounded(ref<Polynomial> x, ref<Polynomial> y, ref<Polynomial> res)
 {
-    ref<Constraint> resGEQx = Atom::create(res, x, Atom::Leq);
-    ref<Constraint> resGEQy = Atom::create(res, y, Atom::Leq);
+    //<Negar>
+    ref<Constraint> resGEQx;
+    ref<Constraint> resGEQy;
+    if (signednessInfo) {
+        resGEQx = m_unsignedEncoding ? Atom::create(res, x, Atom::Ule) : Atom::create(res, x, Atom::Sle);
+        resGEQy = m_unsignedEncoding ? Atom::create(res, y, Atom::Ule) : Atom::create(res, y, Atom::Sle);
+    }
+    else {
+        resGEQx = Atom::create(res, x, Atom::Leq);
+        resGEQy = Atom::create(res, y, Atom::Leq);
+    }
+    //</Negar>
     if (m_unsignedEncoding)
     {
         return Operator::create(resGEQx, resGEQy, Operator::And);
     }
     ref<Polynomial> null = Polynomial::null;
-    ref<Constraint> xGEQnull = Atom::create(x, null, Atom::Geq);
-    ref<Constraint> yGEQnull = Atom::create(y, null, Atom::Geq);
-    ref<Constraint> resGEQnull = Atom::create(res, null, Atom::Geq);
-    ref<Constraint> xLSSnull = Atom::create(x, null, Atom::Lss);
-    ref<Constraint> yLSSnull = Atom::create(y, null, Atom::Lss);
-    ref<Constraint> resLSSnull = Atom::create(res, null, Atom::Lss);
+    //<Negar>
+    ref<Constraint> xGEQnull;
+    ref<Constraint> yGEQnull;
+    ref<Constraint> resGEQnull;
+    ref<Constraint> xLSSnull;
+    ref<Constraint> yLSSnull;
+    ref<Constraint> resLSSnull;
+    if (signednessInfo) {
+        xGEQnull = Atom::create(x, null, Atom::Sge);
+        yGEQnull = Atom::create(y, null, Atom::Sge);
+        resGEQnull = Atom::create(res, null, Atom::Sge);
+        xLSSnull = Atom::create(x, null, Atom::Slt);
+        yLSSnull = Atom::create(y, null, Atom::Slt);
+        resLSSnull = Atom::create(res, null, Atom::Slt);
+    }
+    else {
+        xGEQnull = Atom::create(x, null, Atom::Geq);
+        yGEQnull = Atom::create(y, null, Atom::Geq);
+        resGEQnull = Atom::create(res, null, Atom::Geq);
+        xLSSnull = Atom::create(x, null, Atom::Lss);
+        yLSSnull = Atom::create(y, null, Atom::Lss);
+        resLSSnull = Atom::create(res, null, Atom::Lss);
+    }
+    //</Negar>
     // case 1: x >= 0 /\ y >= 0 /\ res >= 0 /\ res >= x /\ res >= y
     ref<Constraint> case1 = Operator::create(xGEQnull, yGEQnull, Operator::And);
     case1 = Operator::create(case1, resGEQnull, Operator::And);
@@ -1877,6 +2509,27 @@ void Converter::visitOr(llvm::BinaryOperator &I)
         {
             ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
             visitGenericInstruction(I, nondef);
+
+            //<Negar>
+            std::string varName = I.getName().str();
+            llvm::Value *firstOperand = I.getOperand(0);
+            std::string firstOperandStr;
+            if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(firstOperand)) {
+                firstOperandStr = std::to_string(constInt->getSExtValue());
+            }
+            else {
+                firstOperandStr = "v" + firstOperand->getName().str();
+            }
+            llvm::Value *secondOperand = I.getOperand(1);
+            std::string secondOperandStr;
+            if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(secondOperand)) {
+                secondOperandStr = std::to_string(constInt->getSExtValue());
+            }
+            else {
+                secondOperandStr = "v" + secondOperand->getName().str();
+            }
+            std::cout << "v" << varName << " := or(" << firstOperandStr << ", " << secondOperandStr << ");" << std::endl;
+            //</Negar>
         }
     }
 }
@@ -1926,6 +2579,18 @@ void Converter::visitCallInst(llvm::CallInst &I)
     }
     else
     {
+        //<Negar>
+        if (llvm::Function *CF = I.getCalledFunction()) {
+            if (CF->isIntrinsic()) {
+                if (CF->getIntrinsicID() == llvm::Intrinsic::memcpy) {
+                    std::string leftVar = I.getOperand(0)->getName().str();
+                    std::string rightVar = I.getOperand(1)->getName().str();
+                    std::cout << "v" << leftVar << " := v" << rightVar << ";" << std::endl;
+                }
+            }
+        }
+        //</Negar>
+
         llvm::CallSite callSite(&I);
         llvm::Function *calledFunction = callSite.getCalledFunction();
         if (calledFunction != NULL)
@@ -2015,8 +2680,27 @@ void Converter::visitCallInst(llvm::CallInst &I)
 
                 if (m_t2Output)
                 {
-                    //std::cout << (nondef->toString()) << ":= nondet();" << std::endl;
-                    std::cout << (getVar(&I)) << " := nondet();" << std::endl;
+                    //<Negar>
+                    if (nondetTypeInfo) {
+                        llvm::Function *calledFunc = I.getCalledFunction();
+                        if (calledFunc) {
+                            std::string funcName = calledFunc->getName().str();
+                            const std::string prefix = "__VERIFIER_nondet_";
+                            if (funcName.find(prefix) == 0) {
+                                std::string typeSuffix = funcName.substr(prefix.size());
+                                std::cout << (getVar(&I)) << " := nondet_" + typeSuffix + "();" << std::endl;
+                            }
+                        }
+                    }
+                    else {
+                    //</Negar>
+
+                        //std::cout << (nondef->toString()) << ":= nondet();" << std::endl;
+                        std::cout << (getVar(&I)) << " := nondet();" << std::endl;
+
+                    //<Negar>
+                    }
+                    //</Negar>
                 }
 
                 newArgs = getZappedArgs(toZap, I, nondef);
@@ -2126,6 +2810,13 @@ void Converter::visitPHINode(llvm::PHINode &I)
 {
     if (I.getType() == m_boolType || !I.getType()->isIntegerTy())
     {
+        //<Negar>
+        //if (!m_phase1) {
+        //    std::string phiVarName = I.getName().str();
+        //    std::cout << "v" << phiVarName << " := " << "var__temp_v" + phiVarName << ";" << std::endl;
+        //}
+        //</Negar>
+
         return;
     }
     std::string phiVar = getVar(&I);
@@ -2163,9 +2854,154 @@ void Converter::visitPHINode(llvm::PHINode &I)
     }
 }
 
-void Converter::visitGetElementPtrInst(llvm::GetElementPtrInst &)
+//<Negar>
+void Converter::visitGetElementPtrInst(llvm::GetElementPtrInst &gepInst)
 {
+    if (!m_phase1) {
+        llvm::Type *ptrType = gepInst.getPointerOperandType()->getPointerElementType();
+        if (ptrType->isArrayTy()) {
+            // Access an element of an array -> One-dimensional -> Fixed-index OR Variable-index
+            std::string arrayName = gepInst.getPointerOperand()->getName().str();
+            if (arrayName.find(".str") == std::string::npos && arrayName.find("__PRETTY_FUNCTION__.") == std::string::npos) {
+                std::string varName = gepInst.getName().str();
+                llvm::Value *arrayIndexOperand = gepInst.getOperand(gepInst.getNumOperands() - 1);
+                std::string index;
+                if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(arrayIndexOperand)) {
+                    // Fixed-index
+                    index = std::to_string(constInt->getSExtValue());
+                }
+                else {
+                    // Variable-index
+                    index = "v" + arrayIndexOperand->getName().str();
+                }
+                llvm::Type *elementType = llvm::dyn_cast<llvm::ArrayType>(ptrType)->getElementType();
+                if (elementType->isIntegerTy(8) || elementType->isIntegerTy(32) || elementType->isIntegerTy(64)) { // char, int, or long
+                    std::cout << "v" << varName << " := " << index << ";" << std::endl;
+                }
+                else if (elementType->isStructTy()) { // struct
+                    std::cout << "v" << varName << " := select_array(v" << arrayName << ", " << index << ");" << std::endl;
+                }
+                getElementPtrInsts.push_back({"v" + varName, "v" + arrayName, index});
+                arrayInsts.push_back({"v" + varName, "v" + arrayName, index});
+            }
+        }
+        else if (ptrType->isStructTy()) {
+            if (gepInst.getNumOperands() == 3) {
+                // Access a field of a structure
+                std::string varName = gepInst.getName().str();
+                std::string structInstance = gepInst.getPointerOperand()->getName().str();
+                llvm::Value *accessedField = gepInst.getOperand(gepInst.getNumOperands() - 1);
+                int accessedFieldId = llvm::dyn_cast<llvm::ConstantInt>(accessedField)->getSExtValue();
+                int totalFields = llvm::cast<llvm::StructType>(ptrType)->getNumElements();
+                structInsts.push_back({"v" + varName, "v" + structInstance, accessedFieldId, totalFields});
+            }
+            else {
+                //<second>
+                std::string basePoint = gepInst.getPointerOperand()->getName().str();
+                if (std::find(oneDimArrs.begin(), oneDimArrs.end(), "v" + basePoint) != oneDimArrs.end()) {
+                    // Access an element of an array -> One-dimensional -> Flexible access -> 1 (struct)
+                    std::string varName = gepInst.getName().str();
+                    llvm::Value *arrayIndexOperand = gepInst.getOperand(gepInst.getNumOperands() - 1);
+                    std::string index;
+                    if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(arrayIndexOperand)) {
+                        index = std::to_string(constInt->getSExtValue());
+                    }
+                    else {
+                        index = "v" + arrayIndexOperand->getName().str();
+                    }
+                    std::cout << "v" << varName << " := select_array(v" << basePoint << ", " << index << ");" << std::endl;
+                    arrayInsts.push_back({"v" + varName, "v" + basePoint, index});
+                }
+                else {
+                    // Access an element of an array -> One-dimensional -> Flexible access -> 2 (struct)
+                    std::string varName = gepInst.getName().str();
+                    auto it = std::find_if(getElementPtrInsts.begin(), getElementPtrInsts.end(), [&basePoint](const GetElementPtrInst& getElementPtrInst) { return getElementPtrInst.variable == "v" + basePoint; });
+                    std::string arrayName = it->array;
+                    std::string index = it->index;
+                    llvm::Value *offsetOperand = gepInst.getOperand(gepInst.getNumOperands() - 1);
+                    std::string offset;
+                    if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(offsetOperand)) {
+                        offset = std::to_string(constInt->getSExtValue());
+                    }
+                    else {
+                        offset = "v" + offsetOperand->getName().str();
+                    }
+                    std::cout << "v" << varName << " := select_array(" << arrayName << ", " << index << " + " << offset << ");" << std::endl;
+                    arrayInsts.push_back({"v" + varName, arrayName, index + " + " + offset});
+                }
+                //</second>
+            }
+        }
+        else {
+            //<first>
+            std::string basePoint = gepInst.getPointerOperand()->getName().str();
+            if (std::find(oneDimArrs.begin(), oneDimArrs.end(), "v" + basePoint) != oneDimArrs.end()) {
+                // Access an element of an array -> One-dimensional -> Flexible access -> 1 (anything except struct)
+                std::string varName = gepInst.getName().str();
+                llvm::Value *arrayIndexOperand = gepInst.getOperand(gepInst.getNumOperands() - 1);
+                std::string index;
+                if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(arrayIndexOperand)) {
+                    index = std::to_string(constInt->getSExtValue());
+                }
+                else {
+                    index = "v" + arrayIndexOperand->getName().str();
+                }
+                std::cout << "v" << varName << " := " << index << ";" << std::endl;
+                arrayInsts.push_back({"v" + varName, "v" + basePoint, index});
+            }
+            else if (std::find(twoDimOuterArrs.begin(), twoDimOuterArrs.end(), "v" + basePoint) != twoDimOuterArrs.end()) {
+                // Access an element of an array -> Two-dimensional -> Row
+                std::string varName = gepInst.getName().str();
+                llvm::Value *arrayIndexOperand = gepInst.getOperand(gepInst.getNumOperands() - 1);
+                std::string index;
+                if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(arrayIndexOperand)) {
+                    index = std::to_string(constInt->getSExtValue());
+                }
+                else {
+                    index = "v" + arrayIndexOperand->getName().str();
+                }
+                std::cout << "v" << varName << " := select_array(v" << basePoint << ", " << index << ");" << std::endl;
+                if (std::find(twoDimInnerArrs.begin(), twoDimInnerArrs.end(), "v" + varName) == twoDimInnerArrs.end()) {
+                    twoDimInnerArrs.push_back("v" + varName);
+                }
+                arrayInsts.push_back({"v" + varName, "v" + basePoint, index});
+            }
+            else if (std::find(twoDimInnerArrs.begin(), twoDimInnerArrs.end(), "v" + basePoint) != twoDimInnerArrs.end()) {
+                // Access an element of an array -> Two-dimensional -> Column
+                std::string varName = gepInst.getName().str();
+                llvm::Value *arrayIndexOperand = gepInst.getOperand(gepInst.getNumOperands() - 1);
+                std::string index;
+                if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(arrayIndexOperand)) {
+                    index = std::to_string(constInt->getSExtValue());
+                }
+                else {
+                    index = "v" + arrayIndexOperand->getName().str();
+                }
+                std::cout << "v" << varName << " := " << index << ";" << std::endl;
+                arrayInsts.push_back({"v" + varName, "v" + basePoint, index});
+            }
+            else {
+                // Access an element of an array -> One-dimensional -> Flexible access -> 2 (anything except struct)
+                std::string varName = gepInst.getName().str();
+                auto it = std::find_if(getElementPtrInsts.begin(), getElementPtrInsts.end(), [&basePoint](const GetElementPtrInst& getElementPtrInst) { return getElementPtrInst.variable == "v" + basePoint; });
+                std::string arrayName = it->array;
+                std::string index = it->index;
+                llvm::Value *offsetOperand = gepInst.getOperand(gepInst.getNumOperands() - 1);
+                std::string offset;
+                if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(offsetOperand)) {
+                    offset = std::to_string(constInt->getSExtValue());
+                }
+                else {
+                    offset = "v" + offsetOperand->getName().str();
+                }
+                std::cout << "v" << varName << " := " << index << " + " << offset << ";" << std::endl;
+                arrayInsts.push_back({"v" + varName, arrayName, index + " + " + offset});
+            }
+            //</first>
+        }
+    }
 }
+//</Negar>
 
 void Converter::visitIntToPtrInst(llvm::IntToPtrInst &)
 {
@@ -2175,6 +3011,15 @@ void Converter::visitBitCastInst(llvm::BitCastInst &I)
 {
     if (!I.getType()->isIntegerTy())
     {
+        //<Negar>
+        //if(!m_phase1){
+        //    std::string leftVar = I.getName().str();
+        //    std::string rightVar = I.getOperand(0)->getName().str();
+        //    std::cout << "v" << leftVar << " := select_array(v" << rightVar << ", 0);" << std::endl;
+        //    arrayInsts.push_back({"v" + leftVar, "v" + rightVar, "0"});
+        //}
+        //</Negar>
+
         return;
     }
     if (m_phase1)
@@ -2233,6 +3078,25 @@ void Converter::visitLoadInst(llvm::LoadInst &I)
         {
             // nondef...
             newArg = Polynomial::create(getNondef(&I));
+
+            //<Negar>
+            std::string sourceVar = "v" + I.getPointerOperand()->getName().str();
+            std::string destinationVar = getVar(&I);
+
+            auto it1 = std::find_if(arrayInsts.begin(), arrayInsts.end(), [&sourceVar](const ArrayInst& arrayInst) { return arrayInst.variable == sourceVar; });
+            if (it1 != arrayInsts.end()) {
+                newArg = Polynomial::create("nondef_nf");
+                std::cout << destinationVar << " := " << "select_array(" << it1->array << ", " << sourceVar << ");" << std::endl;
+            }
+
+            else {
+                auto it2 = std::find_if(structInsts.begin(), structInsts.end(), [&sourceVar](const StructInst& structInst) { return structInst.variable == sourceVar; });
+                if (it2 != structInsts.end()) {
+                    newArg = Polynomial::create("nondef_nf");
+                    std::cout << destinationVar << " := select_tuple(" << it2->instance << ", " << std::to_string(it2->accessedFieldId) << ", " + std::to_string(it2->totalFields) + ");" << std::endl;
+                }
+            }
+            //</Negar>
         }
         m_idMap.insert(std::make_pair(&I, m_counter));
         ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
@@ -2241,10 +3105,18 @@ void Converter::visitLoadInst(llvm::LoadInst &I)
         ref<Rule> rule = Rule::create(lhs, rhs, Constraint::_true);
         if (m_t2Output)
         {
-            //std::cout << (nondef->toString()) << ":= nondet();" << std::endl;
-            //std::cout << (getVar(&I)) << " := nondet();" << std::endl;
-            std::cout << (getVar(&I)) << " := "
-                      << newArg->toString() << ";" << std::endl;
+            //<Negar>
+            if (newArg->toString() != "nondef_nf") {
+            //</Negar>
+
+                //std::cout << (nondef->toString()) << ":= nondet();" << std::endl;
+                //std::cout << (getVar(&I)) << " := nondet();" << std::endl;
+                std::cout << (getVar(&I)) << " := "
+                          << newArg->toString() << ";" << std::endl;
+
+            //<Negar>
+            }
+            //</Negar>
         }
         m_blockRules.push_back(rule);
     }
@@ -2260,8 +3132,65 @@ void Converter::visitStoreInst(llvm::StoreInst &I)
         llvm::Value *val = I.getValueOperand();
         llvm::Value *ptr = I.getPointerOperand();
         ref<Polynomial> p = getPolynomial(val);
-        std::cout << (getVar(ptr)) << " := "
-                  << p->toString() << ";" << std::endl;
+
+        //<Negar>
+        bool flag = false;
+
+        std::string sourceVar = p->toString();
+        std::string destinationVar = getVar(ptr);
+
+        auto it1 = std::find_if(arrayInsts.begin(), arrayInsts.end(), [&destinationVar](const ArrayInst& arrayInst) { return arrayInst.variable == destinationVar; });
+        if (it1 != arrayInsts.end()) {
+            flag = true;
+            std::string arrayName = it1->array;
+
+            if (std::find(oneDimArrs.begin(), oneDimArrs.end(), arrayName) != oneDimArrs.end()) {
+                std::cout << arrayName << " := store_array(" << arrayName << ", " << destinationVar << ", " << sourceVar << ");" << std::endl;
+            }
+
+            else {
+                std::cout << arrayName << " := store_array(" << arrayName << ", " << destinationVar << ", " << sourceVar << ");" << std::endl;
+                auto it2 = std::find_if(arrayInsts.begin(), arrayInsts.end(), [&arrayName](const ArrayInst& arrayInst) { return arrayInst.variable == arrayName; });
+                if (it2 != arrayInsts.end()) {
+                    std::cout << it2->array << " := store_array(" << it2->array << ", " << it2->index << ", " << arrayName << ");" << std::endl;
+                }
+            }
+        }
+
+        else {
+            auto it3 = std::find_if(structInsts.begin(), structInsts.end(), [&destinationVar](const StructInst& structInst) { return structInst.variable == destinationVar; });
+            if (it3 != structInsts.end()) {
+                flag = true;
+                std::string structInstance = it3->instance;
+                auto it4 = std::find_if(arrayInsts.begin(), arrayInsts.end(), [&structInstance](const ArrayInst& arrayInst) { return arrayInst.variable == structInstance; });
+                if (it4 != arrayInsts.end()) {
+                    std::string newInst = it3->variable + "v" + std::to_string(it3->totalFields) + " := constr_tuple(";
+                    for (int i = 0; i < it3->totalFields; i++) {
+                        if (i == it3->accessedFieldId) {
+                            newInst = newInst + sourceVar + ", ";
+                        }
+                        else {
+                            std::cout << it3->variable << "v" << std::to_string(i) << " := select_tuple(" << structInstance << ", " << std::to_string(i) << ", " << it3->totalFields << ");" << std::endl;
+                            newInst = newInst + it3->variable + "v" + std::to_string(i) + ", ";
+                        }
+                    }
+                    newInst.erase(newInst.size() - 2);
+                    newInst = newInst + ");";
+                    std::cout << newInst << std::endl;
+                    std::cout << it4->array << " := store_array(" << it4->array << ", " << it4->index << ", " << it3->variable + "v" + std::to_string(it3->totalFields) << ");" << std::endl;
+                }
+            }
+        }
+
+        if (flag != true) {
+        //</Negar>
+
+            std::cout << (getVar(ptr)) << " := "
+                      << p->toString() << ";" << std::endl;
+
+        //<Negar>
+        }
+        //</Negar>
     }
     else
     {
@@ -2305,9 +3234,43 @@ void Converter::visitStoreInst(llvm::StoreInst &I)
     }
 }
 
-void Converter::visitAllocaInst(llvm::AllocaInst &)
+//<Negar>
+void Converter::visitAllocaInst(llvm::AllocaInst &allocaInst)
 {
+    if (m_phase1) {
+    }
+    else {
+        llvm::Type *allocatedType = allocaInst.getAllocatedType();
+        if (allocatedType->isArrayTy()) {
+            // Define an array -> Locally -> One-dimensional -> Fixed-sized
+            std::string arrayName = "v" + allocaInst.getName().str();
+            std::cout << arrayName << " := nondet();" << std::endl;
+            if (std::find(oneDimArrs.begin(), oneDimArrs.end(), arrayName) == oneDimArrs.end()) {
+                oneDimArrs.push_back(arrayName);
+            }
+        }
+        else {
+            std::string arraySizeOperand = allocaInst.getArraySize()->getName().str();
+            if (std::find(mulInsts.begin(), mulInsts.end(), "v" + arraySizeOperand) == mulInsts.end()) {
+                // Define an array -> Locally -> One-dimensional -> Variable-sized
+                std::string arrayName = "v" + allocaInst.getName().str();
+                std::cout << arrayName << " := nondet();" << std::endl;
+                if (std::find(oneDimArrs.begin(), oneDimArrs.end(), arrayName) == oneDimArrs.end()) {
+                    oneDimArrs.push_back(arrayName);
+                }
+            }
+            else {
+                // Define an array -> Locally -> Two-dimensional
+                std::string arrayName = "v" + allocaInst.getName().str();
+                std::cout << arrayName << " := nondet();" << std::endl;
+                if (std::find(twoDimOuterArrs.begin(), twoDimOuterArrs.end(), arrayName) == twoDimOuterArrs.end()) {
+                    twoDimOuterArrs.push_back(arrayName);
+                }
+            }
+        }
+    }
 }
+//</Negar>
 
 void Converter::visitFPToSIInst(llvm::FPToSIInst &I)
 {
@@ -2317,6 +3280,12 @@ void Converter::visitFPToSIInst(llvm::FPToSIInst &I)
     }
     else
     {
+        //<Negar>
+        std::string leftVar = I.getName().str();
+        std::string rightVar = I.getOperand(0)->getName().str();
+        std::cout << "v" << leftVar << " := real2int(v" << rightVar << ");" << std::endl;
+        //</Negar>
+
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         visitGenericInstruction(I, nondef);
     }
@@ -2330,6 +3299,12 @@ void Converter::visitFPToUIInst(llvm::FPToUIInst &I)
     }
     else
     {
+        //<Negar>
+        std::string leftVar = I.getName().str();
+        std::string rightVar = I.getOperand(0)->getName().str();
+        std::cout << "v" << leftVar << " := real2int(v" << rightVar << ");" << std::endl;
+        //</Negar>
+
         ref<Polynomial> nondef = Polynomial::create(getNondef(&I));
         visitGenericInstruction(I, nondef);
     }
@@ -2360,6 +3335,26 @@ void Converter::visitSExtInst(llvm::SExtInst &I)
     }
     else
     {
+        //<Negar>
+        std::string leftVar = I.getName().str();
+        std::string rightExpr;
+        llvm::Value *op = I.getOperand(0);
+        if (auto *CI = dyn_cast<llvm::ConstantInt>(op)) {
+            rightExpr = std::to_string(CI->getSExtValue());
+        }
+        else {
+            rightExpr = "v" + op->getName().str();
+        }
+        if (signednessInfo) {
+            unsigned sourceBits = I.getOperand(0)->getType()->getIntegerBitWidth();
+            unsigned destinationBits = I.getType()->getIntegerBitWidth();
+            std::cout << "v" << leftVar << " := sign_extend(" << sourceBits << ", " << destinationBits << ", " << rightExpr << ");" << std::endl;
+        }
+        else {
+            std::cout << "v" << leftVar << " := " << rightExpr << ";" << std::endl;
+        }
+        //</Negar>
+
         m_idMap.insert(std::make_pair(&I, m_counter));
         ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
         ref<Polynomial> copy = getPolynomial(I.getOperand(0));
@@ -2375,8 +3370,18 @@ void Converter::visitSExtInst(llvm::SExtInst &I)
             ref<Polynomial> converted = sizeDiff->add(copy);
             ref<Term> rhs1 = Term::create(getEval(m_counter), getNewArgs(I, copy));
             ref<Term> rhs2 = Term::create(getEval(m_counter), getNewArgs(I, converted));
-            ref<Constraint> c1 = Atom::create(copy, intmaxOld, Atom::Leq);
-            ref<Constraint> c2 = Atom::create(copy, intmaxOld, Atom::Gtr);
+            //<Negar>
+            ref<Constraint> c1;
+            ref<Constraint> c2;
+            if (signednessInfo) {
+                c1 = Atom::create(copy, intmaxOld, Atom::Ule);
+                c2 = Atom::create(copy, intmaxOld, Atom::Ugt);
+            }
+            else {
+                c1 = Atom::create(copy, intmaxOld, Atom::Leq);
+                c2 = Atom::create(copy, intmaxOld, Atom::Gtr);
+            }
+            //</Negar>
             ref<Rule> rule1 = Rule::create(lhs, rhs1, c1);
             ref<Rule> rule2 = Rule::create(lhs, rhs2, c2);
             m_blockRules.push_back(rule1);
@@ -2404,6 +3409,150 @@ void Converter::visitZExtInst(llvm::ZExtInst &I)
     }
     else
     {
+        //<Negar>
+        llvm::BasicBlock *basicBlock = I.getParent();
+        std::string basicBlockName = basicBlock->getName().str();
+        llvm::Value *preInst = I.getOperand(0);
+        llvm::ICmpInst *preCmpInst = dyn_cast<llvm::ICmpInst>(preInst);
+        if (preCmpInst) {
+            llvm::ICmpInst::Predicate op = preCmpInst->getPredicate();
+            std::string trueOp;
+            std::string falseOp;
+            if (signednessInfo) {
+                switch (op) {
+                    case llvm::ICmpInst::ICMP_EQ:
+                        trueOp = "==";
+                        falseOp = "!=";
+                        break;
+                    case llvm::ICmpInst::ICMP_NE:
+                        trueOp = "!=";
+                        falseOp = "==";
+                        break;
+                    case llvm::ICmpInst::ICMP_SLT:
+                        trueOp = "slt";
+                        falseOp = "sge";
+                        break;
+                    case llvm::ICmpInst::ICMP_SLE:
+                        trueOp = "sle";
+                        falseOp = "sgt";
+                        break;
+                    case llvm::ICmpInst::ICMP_SGT:
+                        trueOp = "sgt";
+                        falseOp = "sle";
+                        break;
+                    case llvm::ICmpInst::ICMP_SGE:
+                        trueOp = "sge";
+                        falseOp = "slt";
+                        break;
+                    case llvm::ICmpInst::ICMP_ULT:
+                        trueOp = "ult";
+                        falseOp = "uge";
+                        break;
+                    case llvm::ICmpInst::ICMP_ULE:
+                        trueOp = "ule";
+                        falseOp = "ugt";
+                        break;
+                    case llvm::ICmpInst::ICMP_UGT:
+                        trueOp = "ugt";
+                        falseOp = "ule";
+                        break;
+                    case llvm::ICmpInst::ICMP_UGE:
+                        trueOp = "uge";
+                        falseOp = "ult";
+                        break;
+                    default:
+                        trueOp = "?";
+                        falseOp = "!?";
+                }
+            } else {
+                switch (op) {
+                    case llvm::ICmpInst::ICMP_EQ:
+                        trueOp = "==";
+                        falseOp = "!=";
+                        break;
+                    case llvm::ICmpInst::ICMP_NE:
+                        trueOp = "!=";
+                        falseOp = "==";
+                        break;
+                    case llvm::ICmpInst::ICMP_SLT:
+                    case llvm::ICmpInst::ICMP_ULT:
+                        trueOp = "<";
+                        falseOp = ">=";
+                        break;
+                    case llvm::ICmpInst::ICMP_SLE:
+                    case llvm::ICmpInst::ICMP_ULE:
+                        trueOp = "<=";
+                        falseOp = ">";
+                        break;
+                    case llvm::ICmpInst::ICMP_SGT:
+                    case llvm::ICmpInst::ICMP_UGT:
+                        trueOp = ">";
+                        falseOp = "<=";
+                        break;
+                    case llvm::ICmpInst::ICMP_SGE:
+                    case llvm::ICmpInst::ICMP_UGE:
+                        trueOp = ">=";
+                        falseOp = "<";
+                        break;
+                    default:
+                        trueOp = "?";
+                        falseOp = "!?";
+                }
+            }
+            llvm::Value *leftOperand = preCmpInst->getOperand(0);
+            llvm::Value *rightOperand = preCmpInst->getOperand(1);
+            std::string leftOperandStr;
+            if (llvm::ConstantInt * CI = llvm::dyn_cast<llvm::ConstantInt>(leftOperand)) {
+                leftOperandStr = std::to_string(CI->getSExtValue());
+            } else if (leftOperand->hasName()) {
+                leftOperandStr = "v" + leftOperand->getName().str();
+            } else {
+                leftOperandStr = "v" + std::to_string(leftOperand->getValueID());
+            }
+            std::string rightOperandStr;
+            if (llvm::ConstantInt * CI = llvm::dyn_cast<llvm::ConstantInt>(rightOperand)) {
+                rightOperandStr = std::to_string(CI->getSExtValue());
+            } else if (rightOperand->hasName()) {
+                rightOperandStr = "v" + rightOperand->getName().str();
+            } else {
+                rightOperandStr = "v" + std::to_string(rightOperand->getValueID());
+            }
+            std::string result;
+            if (preCmpInst->hasName()) {
+                result = "v" + preCmpInst->getName().str();
+            } else {
+                result = "v" + std::to_string(preCmpInst->getValueID());
+            }
+            std::cout << "TO: " << basicBlockName << "_" << result << ";\n\n";
+            std::cout << "FROM: " << basicBlockName << "_" << result << ";\n";
+            std::cout << "assume(" << leftOperandStr << " " << trueOp << " " << rightOperandStr << ");\n";
+            std::cout << result << " := 1;\n";
+            std::cout << "TO: " << basicBlockName << "_s" << result << ";\n\n";
+            std::cout << "FROM: " << basicBlockName << "_" << result << ";\n";
+            std::cout << "assume(" << leftOperandStr << " " << falseOp << " " << rightOperandStr << ");\n";
+            std::cout << result << " := 0;\n";
+            std::cout << "TO: " << basicBlockName << "_s" << result << ";\n\n";
+            std::cout << "FROM: " << basicBlockName << "_s" << result << ";\n";
+        }
+        std::string leftVar = I.getName().str();
+        std::string rightExpr;
+        llvm::Value *op = I.getOperand(0);
+        if (auto *CI = dyn_cast<llvm::ConstantInt>(op)) {
+            rightExpr = std::to_string(CI->getSExtValue());
+        }
+        else {
+            rightExpr = "v" + op->getName().str();
+        }
+        if (signednessInfo) {
+            unsigned sourceBits = I.getOperand(0)->getType()->getIntegerBitWidth();
+            unsigned destinationBits = I.getType()->getIntegerBitWidth();
+            std::cout << "v" << leftVar << " := zero_extend(" << sourceBits << ", " << destinationBits << ", " << rightExpr << ");" << std::endl;
+        }
+        else {
+            std::cout << "v" << leftVar << " := " << rightExpr << ";" << std::endl;
+        }
+        //</Negar>
+
         m_idMap.insert(std::make_pair(&I, m_counter));
         ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
         ++m_counter;
@@ -2430,8 +3579,18 @@ void Converter::visitZExtInst(llvm::ZExtInst &I)
                 ref<Term> rhs1 = Term::create(getEval(m_counter), getNewArgs(I, copy));
                 ref<Term> rhs2 = Term::create(getEval(m_counter), getNewArgs(I, converted));
                 ref<Polynomial> zero = Polynomial::null;
-                ref<Constraint> c1 = Atom::create(copy, zero, Atom::Geq);
-                ref<Constraint> c2 = Atom::create(copy, zero, Atom::Lss);
+                //<Negar>
+                ref<Constraint> c1;
+                ref<Constraint> c2;
+                if (signednessInfo) {
+                    ref<Constraint> c1 = Atom::create(copy, zero, Atom::Sge);
+                    ref<Constraint> c2 = Atom::create(copy, zero, Atom::Slt);
+                }
+                else {
+                    ref<Constraint> c1 = Atom::create(copy, zero, Atom::Geq);
+                    ref<Constraint> c2 = Atom::create(copy, zero, Atom::Lss);
+                }
+                //</Negar>
                 ref<Rule> rule1 = Rule::create(lhs, rhs1, c1);
                 ref<Rule> rule2 = Rule::create(lhs, rhs2, c2);
                 m_blockRules.push_back(rule1);
@@ -2460,6 +3619,18 @@ void Converter::visitTruncInst(llvm::TruncInst &I)
     }
     else
     {
+        //<Negar>
+        std::string leftVar = I.getName().str();
+        std::string rightVar = I.getOperand(0)->getName().str();
+        if (signednessInfo) {
+            unsigned destinationBits = I.getType()->getIntegerBitWidth();
+            std::cout << "v" << leftVar << " := extract(" << (destinationBits - 1) << ", 0, v" << rightVar << ");" << std::endl;
+        }
+        else {
+            std::cout << "v" << leftVar << " := v" << rightVar << ";" << std::endl;
+        }
+        //</Negar>
+
         m_idMap.insert(std::make_pair(&I, m_counter));
         ref<Term> lhs = Term::create(getEval(m_counter), m_lhs);
         ref<Polynomial> val;
@@ -2525,3 +3696,77 @@ std::set<std::string> Converter::getComplexityLHSs()
 {
     return m_complexityLHSs;
 }
+
+//<Negar>
+void Converter::visitBinaryOperator(llvm::BinaryOperator &binaryOp) {
+    if (!m_phase1) {
+        if (binaryOp.getOpcode() == llvm::Instruction::Shl || binaryOp.getOpcode() == llvm::Instruction::LShr || binaryOp.getOpcode() == llvm::Instruction::AShr) {
+            std::string varName = binaryOp.getName().str();
+            llvm::Value *firstOperand = binaryOp.getOperand(0);
+            std::string firstOperandStr;
+            if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(firstOperand)) {
+                firstOperandStr = std::to_string(constInt->getSExtValue());
+            }
+            else {
+                firstOperandStr = "v" + firstOperand->getName().str();
+            }
+            llvm::Value *secondOperand = binaryOp.getOperand(1);
+            std::string secondOperandStr;
+            if (auto *constInt = llvm::dyn_cast<llvm::ConstantInt>(secondOperand)) {
+                secondOperandStr = std::to_string(constInt->getSExtValue());
+            }
+            else {
+                secondOperandStr = "v" + secondOperand->getName().str();
+            }
+            switch (binaryOp.getOpcode()) {
+                case llvm::Instruction::Shl:
+                    // Shift Left
+                    std::cout << "v" << varName << " := shl(" << firstOperandStr << ", " << secondOperandStr << ");" << std::endl;
+                    break;
+                case llvm::Instruction::LShr:
+                    // Unsigned Shift Right
+                    std::cout << "v" << varName << " := lshr(" << firstOperandStr << ", " << secondOperandStr << ");" << std::endl;
+                    break;
+                case llvm::Instruction::AShr:
+                    // Signed Shift Right
+                    std::cout << "v" << varName << " := ashr(" << firstOperandStr << ", " << secondOperandStr << ");" << std::endl;
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+}
+//</Negar>
+
+//<Negar>
+void Converter::visitUIToFPInst(llvm::UIToFPInst &I) {
+    if (!m_phase1) {
+        std::string leftVar = I.getName().str();
+        std::string rightVar = I.getOperand(0)->getName().str();
+        unsigned bitWidth = I.getOperand(0)->getType()->getIntegerBitWidth();
+        if (signednessInfo) {
+            std::cout << "v" << leftVar << " := ubv2real(" << bitWidth << ", v" << rightVar << ");" << std::endl;
+        }
+        else {
+            std::cout << "v" << leftVar << " := int2real(v" << rightVar << ");" << std::endl;
+        }
+    }
+}
+//</Negar>
+
+//<Negar>
+void Converter::visitSIToFPInst(llvm::SIToFPInst &I) {
+    if(!m_phase1){
+        std::string leftVar = I.getName().str();
+        std::string rightVar = I.getOperand(0)->getName().str();
+        unsigned bitWidth = I.getOperand(0)->getType()->getIntegerBitWidth();
+        if (signednessInfo) {
+            std::cout << "v" << leftVar << " := sbv2real(" << bitWidth << ", v" << rightVar << ");" << std::endl;
+        }
+        else {
+            std::cout << "v" << leftVar << " := int2real(v" << rightVar << ");" << std::endl;
+        }
+    }
+}
+//</Negar>

@@ -5,6 +5,10 @@
 // Licensed under the University of Illinois/NCSA Open Source License.
 // See LICENSE for details.
 
+//<Negar>
+//signednessInfo
+//</Negar>
+
 #include "llvm2kittel/BoundConstrainer.h"
 #include "llvm2kittel/IntTRS/Constraint.h"
 #include "llvm2kittel/IntTRS/Polynomial.h"
@@ -31,37 +35,66 @@ static std::string getBlockFun(std::string f, unsigned int i)
     return tmp.str();
 }
 
-static ref<Constraint> getBoundConstraints(std::string var, std::map<std::string, unsigned int> &bitwidthMap, bool unsignedEncoding)
+static ref<Constraint> getBoundConstraints(std::string var, std::map<std::string, unsigned int> &bitwidthMap, bool unsignedEncoding, bool signednessInfo)
 {
-    std::map<std::string, unsigned int>::iterator found = bitwidthMap.find(var);
-    if (found == bitwidthMap.end()) {
-        std::cerr << "Did not find bitwidth information for " << var << " in \"getBoundConstraints\"!" << std::endl;
-        exit(777);
+    if (signednessInfo) {
+        std::map<std::string, unsigned int>::iterator found = bitwidthMap.find(var);
+        if (found == bitwidthMap.end()) {
+            std::cerr << "Did not find bitwidth information for " << var << " in \"getBoundConstraints\"!" << std::endl;
+            exit(777);
+        }
+        unsigned int bitwidth = found->second;
+        ref<Polynomial> lower;
+        ref<Polynomial> upper;
+        Atom::AType op1;
+        Atom::AType op2;
+        ref<Polynomial> pvar = Polynomial::create(var);
+        if (unsignedEncoding) {
+            lower = Polynomial::null;
+            upper = Polynomial::uimax(bitwidth);
+            op1 = Atom::Uge;
+            op2 = Atom::Ule;
+        } else {
+            lower = Polynomial::simin(bitwidth);
+            upper = Polynomial::simax(bitwidth);
+            op1 = Atom::Sge;
+            op2 = Atom::Sle;
+        }
+        ref<Constraint> lowerCheck = Atom::create(pvar, lower, op1);
+        ref<Constraint> upperCheck = Atom::create(pvar, upper, op2);
+        return Operator::create(lowerCheck, upperCheck, Operator::And);
     }
-    unsigned int bitwidth = found->second;
-    ref<Polynomial> lower;
-    ref<Polynomial> upper;
-    ref<Polynomial> pvar = Polynomial::create(var);
-    if (unsignedEncoding) {
-        lower = Polynomial::null;
-        upper = Polynomial::uimax(bitwidth);
-    } else {
-        lower = Polynomial::simin(bitwidth);
-        upper = Polynomial::simax(bitwidth);
+    else {
+        std::map<std::string, unsigned int>::iterator found = bitwidthMap.find(var);
+        if (found == bitwidthMap.end()) {
+            std::cerr << "Did not find bitwidth information for " << var << " in \"getBoundConstraints\"!" << std::endl;
+            exit(777);
+        }
+        unsigned int bitwidth = found->second;
+        ref<Polynomial> lower;
+        ref<Polynomial> upper;
+        ref<Polynomial> pvar = Polynomial::create(var);
+        if (unsignedEncoding) {
+            lower = Polynomial::null;
+            upper = Polynomial::uimax(bitwidth);
+        } else {
+            lower = Polynomial::simin(bitwidth);
+            upper = Polynomial::simax(bitwidth);
+        }
+        ref<Constraint> lowerCheck = Atom::create(pvar, lower, Atom::Geq);
+        ref<Constraint> upperCheck = Atom::create(pvar, upper, Atom::Leq);
+        return Operator::create(lowerCheck, upperCheck, Operator::And);
     }
-    ref<Constraint> lowerCheck = Atom::create(pvar, lower, Atom::Geq);
-    ref<Constraint> upperCheck = Atom::create(pvar, upper, Atom::Leq);
-    return Operator::create(lowerCheck, upperCheck, Operator::And);
 }
 
-static ref<Constraint> getBoundConstraints(std::set<std::string> &vars, std::map<std::string, unsigned int> &bitwidthMap, bool unsignedEncoding)
+static ref<Constraint> getBoundConstraints(std::set<std::string> &vars, std::map<std::string, unsigned int> &bitwidthMap, bool unsignedEncoding, bool signednessInfo)
 {
     if (vars.size() == 0) {
         return Constraint::_true;
     }
-    ref<Constraint> res = getBoundConstraints(*(vars.begin()), bitwidthMap, unsignedEncoding);
+    ref<Constraint> res = getBoundConstraints(*(vars.begin()), bitwidthMap, unsignedEncoding, signednessInfo);
     for (std::set<std::string>::iterator i = ++(vars.begin()), e = vars.end(); i != e; ++i) {
-        res = Operator::create(res, getBoundConstraints(*i, bitwidthMap, unsignedEncoding), Operator::And);
+        res = Operator::create(res, getBoundConstraints(*i, bitwidthMap, unsignedEncoding, signednessInfo), Operator::And);
     }
     return res;
 }
@@ -164,37 +197,76 @@ static ref<Term> getNormRhs(ref<Term> lhs, unsigned int c, ref<Polynomial> addTe
     return Term::create(lhs->getFunctionSymbol(), newargs);
 }
 
-static std::list<ref<Rule> > getNormRules(ref<Term> normLhs, unsigned int c, std::map<std::string, unsigned int> &bitwidthMap, bool unsignedEncoding)
+static std::list<ref<Rule> > getNormRules(ref<Term> normLhs, unsigned int c, std::map<std::string, unsigned int> &bitwidthMap, bool unsignedEncoding, bool signednessInfo)
 {
-    std::list<ref<Rule> > res;
-    std::string var = get(normLhs->getArgs(), c);
-    std::map<std::string, unsigned int>::iterator found = bitwidthMap.find(var);
-    if (found == bitwidthMap.end()) {
-        std::cerr << "Did not find bitwidth information for " << var << " in \"getNormRules\"!" << std::endl;
-        exit(777);
+    if (signednessInfo) {
+        std::list<ref<Rule> > res;
+        std::string var = get(normLhs->getArgs(), c);
+        std::map<std::string, unsigned int>::iterator found = bitwidthMap.find(var);
+        if (found == bitwidthMap.end()) {
+            std::cerr << "Did not find bitwidth information for " << var << " in \"getNormRules\"!" << std::endl;
+            exit(777);
+        }
+        unsigned int bitwidth = found->second;
+        ref<Polynomial> lower;
+        ref<Polynomial> upper;
+        Atom::AType op1;
+        Atom::AType op2;
+        ref<Polynomial> adder;
+        ref<Polynomial> pvar = Polynomial::create(var);
+        if (unsignedEncoding) {
+            lower = Polynomial::null;
+            upper = Polynomial::uimax(bitwidth);
+            op1 = Atom::Ult;
+            op2 = Atom::Ugt;
+        } else {
+            lower = Polynomial::simin(bitwidth);
+            upper = Polynomial::simax(bitwidth);
+            op1 = Atom::Slt;
+            op2 = Atom::Sgt;
+        }
+        adder = Polynomial::power_of_two(bitwidth);
+        ref<Constraint> tooSmall = Atom::create(pvar, lower, op1);
+        ref<Constraint> tooBig = Atom::create(pvar, upper, op2);
+        ref<Term> rhs1 = getNormRhs(normLhs, c, adder, true);
+        ref<Rule> rule1 = Rule::create(normLhs, rhs1, tooSmall);
+        ref<Term> rhs2 = getNormRhs(normLhs, c, adder, false);
+        ref<Rule> rule2 = Rule::create(normLhs, rhs2, tooBig);
+        res.push_back(rule1);
+        res.push_back(rule2);
+        return res;
     }
-    unsigned int bitwidth = found->second;
-    ref<Polynomial> lower;
-    ref<Polynomial> upper;
-    ref<Polynomial> adder;
-    ref<Polynomial> pvar = Polynomial::create(var);
-    if (unsignedEncoding) {
-        lower = Polynomial::null;
-        upper = Polynomial::uimax(bitwidth);
-    } else {
-        lower = Polynomial::simin(bitwidth);
-        upper = Polynomial::simax(bitwidth);
+    else {
+        std::list<ref<Rule> > res;
+        std::string var = get(normLhs->getArgs(), c);
+        std::map<std::string, unsigned int>::iterator found = bitwidthMap.find(var);
+        if (found == bitwidthMap.end()) {
+            std::cerr << "Did not find bitwidth information for " << var << " in \"getNormRules\"!" << std::endl;
+            exit(777);
+        }
+        unsigned int bitwidth = found->second;
+        ref<Polynomial> lower;
+        ref<Polynomial> upper;
+        ref<Polynomial> adder;
+        ref<Polynomial> pvar = Polynomial::create(var);
+        if (unsignedEncoding) {
+            lower = Polynomial::null;
+            upper = Polynomial::uimax(bitwidth);
+        } else {
+            lower = Polynomial::simin(bitwidth);
+            upper = Polynomial::simax(bitwidth);
+        }
+        adder = Polynomial::power_of_two(bitwidth);
+        ref<Constraint> tooSmall = Atom::create(pvar, lower, Atom::Lss);
+        ref<Constraint> tooBig = Atom::create(pvar, upper, Atom::Gtr);
+        ref<Term> rhs1 = getNormRhs(normLhs, c, adder, true);
+        ref<Rule> rule1 = Rule::create(normLhs, rhs1, tooSmall);
+        ref<Term> rhs2 = getNormRhs(normLhs, c, adder, false);
+        ref<Rule> rule2 = Rule::create(normLhs, rhs2, tooBig);
+        res.push_back(rule1);
+        res.push_back(rule2);
+        return res;
     }
-    adder = Polynomial::power_of_two(bitwidth);
-    ref<Constraint> tooSmall = Atom::create(pvar, lower, Atom::Lss);
-    ref<Constraint> tooBig = Atom::create(pvar, upper, Atom::Gtr);
-    ref<Term> rhs1 = getNormRhs(normLhs, c, adder, true);
-    ref<Rule> rule1 = Rule::create(normLhs, rhs1, tooSmall);
-    ref<Term> rhs2 = getNormRhs(normLhs, c, adder, false);
-    ref<Rule> rule2 = Rule::create(normLhs, rhs2, tooBig);
-    res.push_back(rule1);
-    res.push_back(rule2);
-    return res;
 }
 
 static bool isNormSymbol(std::string fun)
@@ -466,7 +538,7 @@ static ref<Constraint> mapPolysToVars(ref<Constraint> c, std::map<Polynomial*, s
     return makeConjunction(newAtoms);
 }
 
-std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<std::string, unsigned int> bitwidthMap, bool unsignedEncoding)
+std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<std::string, unsigned int> bitwidthMap, bool unsignedEncoding, bool signednessInfo)
 {
     std::list<ref<Rule> > res;
     std::set<std::string> haveToKeep;
@@ -486,7 +558,7 @@ std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<
             std::set<std::string> vars;
             lhs->addVariablesToSet(vars);
             rhs->addVariablesToSet(vars);
-            ref<Constraint> bounds = getBoundConstraints(vars, bitwidthMap, unsignedEncoding);
+            ref<Constraint> bounds = getBoundConstraints(vars, bitwidthMap, unsignedEncoding, signednessInfo);
             ref<Constraint> conj = Operator::create(c, bounds, Operator::And);
             ref<Rule> newRule = Rule::create(lhs, rhs, conj);
             res.push_back(newRule);
@@ -529,7 +601,7 @@ std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<
             // lhs -> rhs_cond_norm [ bounds ]
             std::set<std::string> bounds1Vars;
             lhs->addVariablesToSet(bounds1Vars);
-            ref<Constraint> bounds1 = getBoundConstraints(bounds1Vars, bitwidthMap, unsignedEncoding);
+            ref<Constraint> bounds1 = getBoundConstraints(bounds1Vars, bitwidthMap, unsignedEncoding, signednessInfo);
             std::list<ref<Polynomial> > cond_norm_args = lhs->getArgs();
             cond_norm_args.insert(cond_norm_args.end(), nonNormalAtomPolys.begin(), nonNormalAtomPolys.end());
             ref<Term> rhs_cond_norm = Term::create(cond_norm, cond_norm_args);
@@ -543,7 +615,7 @@ std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<
             ref<Term> block = Term::create(blocker, lhs->getArgs());
             std::set<std::string> bounds2Vars;
             rhs_cond_norm_done->addVariablesToSet(bounds2Vars);
-            ref<Constraint> bounds2 = getBoundConstraints(bounds2Vars, bitwidthMap, unsignedEncoding);
+            ref<Constraint> bounds2 = getBoundConstraints(bounds2Vars, bitwidthMap, unsignedEncoding, signednessInfo);
             ref<Constraint> newC = Operator::create(mapPolysToVars(c, atomPolyToVarMap), bounds2, Operator::And);
             ref<Rule> rule2 = Rule::create(rhs_cond_norm_done, block, newC);
 
@@ -556,7 +628,7 @@ std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<
             ref<Term> normRhs = Term::create(rhsFun, ruleNormArgs);
             std::set<std::string> bounds3Vars;
             rhs_rule_norm_done->addVariablesToSet(bounds3Vars);
-            ref<Constraint> bounds3 = getBoundConstraints(bounds3Vars, bitwidthMap, unsignedEncoding);
+            ref<Constraint> bounds3 = getBoundConstraints(bounds3Vars, bitwidthMap, unsignedEncoding, signednessInfo);
             ref<Rule> rule4 = Rule::create(rhs_rule_norm_done, normRhs, bounds3);
 
             // do normalization for both
@@ -570,7 +642,7 @@ std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<
                 pol->addVariablesToSet(vars);
                 std::string var = *(vars.begin());
                 if (isCNorm(var)) {
-                    std::list<ref<Rule> > normRules = getNormRules(rhs_cond_norm_done, count, bitwidthMap, unsignedEncoding);
+                    std::list<ref<Rule> > normRules = getNormRules(rhs_cond_norm_done, count, bitwidthMap, unsignedEncoding, signednessInfo);
                     res.insert(res.end(), normRules.begin(), normRules.end());
                 }
                 ++count;
@@ -582,7 +654,7 @@ std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<
                 std::map<unsigned int, ref<Polynomial> >::iterator it = nonNormal.find(count);
                 if (it != nonNormal.end()) {
                     // normalize it!
-                    std::list<ref<Rule> > normRules = getNormRules(rhs_rule_norm_done, count, bitwidthMap, unsignedEncoding);
+                    std::list<ref<Rule> > normRules = getNormRules(rhs_rule_norm_done, count, bitwidthMap, unsignedEncoding, signednessInfo);
                     res.insert(res.end(), normRules.begin(), normRules.end());
                     ref<Polynomial> p = it->second;
                     if (p->normStepsNeeded() == -1) {

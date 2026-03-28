@@ -185,7 +185,17 @@ public:
         Geq,
         Gtr,
         Leq,
-        Lss
+        Lss,
+        //<Negar>
+        Slt, //Signed Less Than
+        Ult, //Unsigned Less Than
+        Sle, //Signed Less Than or Equal
+        Ule, //Unsigned Less Than or Equal
+        Sgt, //Signed Greater Than
+        Ugt, //Unsigned Greater Than
+        Sge, //Signed Greater Than or Equal
+        Uge //Unsigned Greater Than or Equal
+        //</Negar>
     };
 
 protected:

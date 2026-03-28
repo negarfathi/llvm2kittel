@@ -51,7 +51,10 @@ class Converter : public llvm::InstVisitor<Converter>
 #include "WARN_ON.h"
 
 public:
-    Converter(const llvm::Type *boolType, bool assumeIsControl, bool selectIsControl, bool onlyMultiPredIsControl, bool boundedIntegers, bool unsignedEncoding, bool onlyLoopConditions, DivRemConstraintType divisionConstraintType, bool bitwiseConditions, bool complexityTuples, const bool t2Output);
+    //<Negar>
+    //Converter(const llvm::Type *boolType, bool assumeIsControl, bool selectIsControl, bool onlyMultiPredIsControl, bool boundedIntegers, bool unsignedEncoding, bool onlyLoopConditions, DivRemConstraintType divisionConstraintType, bool bitwiseConditions, bool complexityTuples, const bool t2Output);
+    Converter(const llvm::Type *boolType, bool assumeIsControl, bool selectIsControl, bool onlyMultiPredIsControl, bool boundedIntegers, bool unsignedEncoding, bool onlyLoopConditions, DivRemConstraintType divisionConstraintType, bool bitwiseConditions, bool complexityTuples, const bool t2Output, bool signednessInfo, bool nondetTypeInfo, bool unreachableExit);
+    //</Negar>
 
     void phase1(llvm::Function *function, std::set<llvm::Function*> &scc, MayMustMap &mmMap, std::map<llvm::Function*, std::set<llvm::GlobalVariable*> > &funcMayZap, TrueFalseMap &tfMap, std::set<llvm::BasicBlock*> &lcbs, ConditionMap &elcMap);
     void phase2(llvm::Function *function, std::set<llvm::Function*> &scc, MayMustMap &mmMap, std::map<llvm::Function*, std::set<llvm::GlobalVariable*> > &funcMayZap, TrueFalseMap &tfMap, std::set<llvm::BasicBlock*> &lcbs, ConditionMap &elcMap);
@@ -102,7 +105,53 @@ public:
 
     std::set<std::string> getComplexityLHSs();
 
+    //<Negar>
+    bool isEntryBlock = true;
+    //bool hasUnreachableBlock = false;
+    std::string lastBasicBlockName;
+    std::vector<std::string> mulInsts;
+    struct PhiInst {
+        std::string variable;
+        std::string value;
+        std::string basicBlock;
+    };
+    std::vector<PhiInst> phiInsts;
+    std::vector<std::string> globalInsts;
+    std::vector<std::string> oneDimArrs;
+    std::vector<std::string> twoDimOuterArrs;
+    std::vector<std::string> twoDimInnerArrs;
+    struct GetElementPtrInst {
+        std::string variable;
+        std::string array;
+        std::string index; //Fixed-index or Variable-index
+    };
+    std::vector<GetElementPtrInst> getElementPtrInsts;
+    struct ArrayInst {
+        std::string variable;
+        std::string array;
+        std::string index;
+    };
+    std::vector<ArrayInst> arrayInsts;
+    struct StructInst {
+        std::string variable;
+        std::string instance;
+        int accessedFieldId;
+        int totalFields;
+    };
+    std::vector<StructInst> structInsts;
+
+    void visitUIToFPInst(llvm::UIToFPInst &I);
+    void visitSIToFPInst(llvm::SIToFPInst &I);
+    void visitBinaryOperator(llvm::BinaryOperator &binaryOp);
+    //</Negar>
+
 private:
+    //<Negar>
+    bool signednessInfo;
+    bool nondetTypeInfo;
+    bool unreachableExit;
+    //</Negar>
+
     llvm::BasicBlock *m_entryBlock;
     void visitBB(llvm::BasicBlock *bb);
 

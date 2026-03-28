@@ -145,6 +145,20 @@ static cl::opt<bool> t2Output("t2", cl::desc("Generate T2 format"), cl::init(fal
 static cl::opt<bool> complexityTuples("complexity-tuples", cl::desc("Generate complexity tuples"), cl::init(false), cl::ReallyHidden);
 static cl::opt<bool> uniformComplexityTuples("uniform-complexity-tuples", cl::desc("Generate uniform complexity tuples"), cl::init(false), cl::ReallyHidden);
 
+//<Negar>
+static cl::opt<bool> signednessInfo("signedness-info",
+                                    cl::desc("Include or exclude signedness information in the output file."),
+                                    cl::init(false)); //Default is false
+static cl::opt<bool> nondetTypeInfo("nondet-type-info",
+                                    cl::desc("Include or exclude type information in nondeterministic function names."),
+                                    cl::init(false)); //Default is false
+static cl::opt<bool> unreachableExit("unreachable-exit",
+                                    cl::desc("Control behavior on unreachable. "
+                                             "True: jump to the exit basic block (termination). "
+                                             "False: jump back to the same basic block where unreachable was encountered (non-termination)."),
+                                    cl::init(true)); //Default is true (termination)
+//</Negar>
+
 void transformModule(llvm::Module *module, llvm::Function *function, NondefFactory &ndf)
 {
 #if LLVM_VERSION < VERSION(3, 2)
@@ -674,7 +688,10 @@ int main(int argc, char *argv[])
         for (std::list<llvm::Function*>::iterator fi = scc.begin(), fe = scc.end(); fi != fe; ++fi) {
             llvm::Function *curr = *fi;
             std::string t2Filename = filename.substr(0, filename.length() - 3) + ".t2";
-            Converter converter(boolType, assumeIsControl, selectIsControl, onlyMultiPredIsControl, boundedIntegers, unsignedEncoding, onlyLoopConditions, divisionConstraintType, bitwiseConditions, complexityTuples || uniformComplexityTuples, t2Output);
+            //<Negar>
+            //Converter converter(boolType, assumeIsControl, selectIsControl, onlyMultiPredIsControl, boundedIntegers, unsignedEncoding, onlyLoopConditions, divisionConstraintType, bitwiseConditions, complexityTuples || uniformComplexityTuples, t2Output);
+            Converter converter(boolType, assumeIsControl, selectIsControl, onlyMultiPredIsControl, boundedIntegers, unsignedEncoding, onlyLoopConditions, divisionConstraintType, bitwiseConditions, complexityTuples || uniformComplexityTuples, t2Output, signednessInfo, nondetTypeInfo, unreachableExit);
+            //</Negar>
             std::map<llvm::Function*, MayMustMap>::iterator tmp1 = mmMap.find(curr);
             if (tmp1 == mmMap.end()) {
                 std::cerr << "Could not find alias information (" << __FILE__ << ":" << __LINE__ << ")!" << std::endl;
@@ -715,7 +732,10 @@ int main(int argc, char *argv[])
                     slicedRules = slicer.sliceDuplicates(slicedRules);
                 }
                 if (boundedIntegers) {
-                    slicedRules = kittelize(addBoundConstraints(slicedRules, converter.getBitwidthMap(), unsignedEncoding), smtSolver);
+                    //<Negar>
+                    //slicedRules = kittelize(addBoundConstraints(slicedRules, converter.getBitwidthMap(), unsignedEncoding), smtSolver);
+                    slicedRules = kittelize(addBoundConstraints(slicedRules, converter.getBitwidthMap(), unsignedEncoding, signednessInfo), smtSolver);
+                    //</Negar>
                 }
                 if (debug) {
                     allRules.insert(allRules.end(), rules.begin(), rules.end());

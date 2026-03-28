@@ -5,6 +5,10 @@
 // Licensed under the University of Illinois/NCSA Open Source License.
 // See LICENSE for details.
 
+//<Negar>
+//signednessInfo
+//</Negar>
+
 #ifndef BOUND_CONSTRAINER_H
 #define BOUND_CONSTRAINER_H
 
@@ -17,6 +21,6 @@
 
 class Rule;
 
-std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<std::string, unsigned int> bitwidthMap, bool unsignedEncoding);
+std::list<ref<Rule> > addBoundConstraints(std::list<ref<Rule> > rules, std::map<std::string, unsigned int> bitwidthMap, bool unsignedEncoding, bool signednessInfo);
 
 #endif // BOUND_CONSTRAINER_H
