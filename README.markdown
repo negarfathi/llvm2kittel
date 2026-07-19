@@ -1,30 +1,60 @@
-# llvm2KITTeL
+# Extended llvm2KITTeL
 
-llvm2KITTeL is a converter from LLVM's intermediate representation
-into a format that can be handled by the automatic termination prover
-[KITTeL](https://github.com/s-falke/kittel-koat).
+This repository contains an extended version of the original [llvm2KITTeL `kou` branch](https://github.com/gyggg/llvm2kittel/tree/kou).
 
-This fork is a further extension to translate the LLVM-IR into the 
-T2 file format(.t2) to be handled by the automatic temporal property
-verifier [T2](https://github.com/mmjb/T2).
+The extension adds LLVM-IR-to-LTS translation support for structures, arrays, and bit-level operations. It is intended for use with the [Athena](https://github.com/negarfathi/Athena) termination and non-termination analysis framework.
 
+## Docker Image
+A Docker image containing the extended implementation is available at:
+```bash
+docker pull negarfathi/llvm2kittel:latest
+```
 
-##T2 Extension 
+## Quick Start
 
-After following the INSTALL instructions, running the following commands below
-will allow you to extract a .t2 file. From the build directory:
+### 1. Pull the Docker image:
+```bash
+docker pull negarfathi/llvm2kittel:latest
+```
 
-$ clang -Wall -Wextra -c -emit-llvm -O0 INPUT -o INPUT.bc
+### 2. Start the container from the directory containing the input C program:
+```bash
+docker run --rm -it \
+  -v "$(pwd):/work" \
+  -w /work \
+  negarfathi/llvm2kittel:latest \
+  /bin/bash
+```
 
-$ ./llvm2kittel --dump-ll --no-slicing --eager-inline --t2 INPUT.bc > INPUT.t2
+### 3. Compile the input program to LLVM bitcode inside the container:
+```bash
+clang -Wall -Wextra -g -O0 \
+  -c -emit-llvm input.c \
+  -o input.bc
+```
+Replace `input.c` with the C source file to analyze.
 
+### 4. Configure the translation options and run llvm2KITTeL:
+```bash
+SIGNEDNESS_INFO=true
+UNREACHABLE_EXIT=false
 
-## Papers
+llvm2kittel/build/llvm2kittel \
+  --signedness-info="$SIGNEDNESS_INFO" \
+  --unreachable-exit="$UNREACHABLE_EXIT" \
+  --dump-ll \
+  --no-slicing \
+  --eager-inline \
+  --t2 \
+  input.bc > output.t2
+```
+The generated labeled transition system is written to `output.t2`.
 
-Stephan Falke, Deepak Kapur, Carsten Sinz:
-[Termination Analysis of C Programs Using Compiler Intermediate Languages](http://dx.doi.org/10.4230/LIPIcs.RTA.2011.41).
-RTA 2011: 41-50
+#### Configuration Options:
+- `--signedness-info` — `true` includes signedness information in the generated LTS; `false` omits it.
+- `--unreachable-exit` — `true` treats reaching an unreachable state as a violation; `false` disables this behavior.
 
-Stephan Falke, Deepak Kapur, Carsten Sinz:
-[Termination Analysis of Imperative Programs Using Bitvector Arithmetic](http://dx.doi.org/10.1007/978-3-642-27705-4_21).
-VSTTE 2012: 261-277
+## Citation
+If you use this Docker image or the accompanying tool in your research, please cite the following paper:
+
+N. Fathi, H. Unno, T. Terauchi, and R. Purandare, “Sound Termination and Non-termination Analysis of C Programs with Bit-Precise Bounded Semantics and Advanced Constructs,” *Proceedings of the ACM on Software Engineering*, vol. 3, no. FSE, pp. 4505–4528, Jun. 2026, doi: [10.1145/3808205](https://doi.org/10.1145/3808205)
